@@ -1,0 +1,27 @@
+.field-help,
+.list-note {
+  color: #7a7e76;
+  font-size: 11px;
+}
+
+.list-note {
+  margin: -10px 0 22px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f7f8f4;
+}
+
+.row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.row-tags span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef0e9;
+  font-size: 9px;
+  font-weight: 600;
+}
