@@ -3,15 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f7f7f4">
-  <meta name="description" content="Nexauren Sound — sample packs, MIDI, presets and sounds for music producers.">
-  <title>Nexauren Sound — Sounds for your next track</title>
+  <meta name="theme-color" content="#f4f5ef">
+  <meta name="description" content="Nexauren Sound — sample packs, MIDI, presets and production sounds for music creators.">
+  <title>Nexauren Sound — Build your next track</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="announcement">New sounds are landing soon <span>·</span> Free downloads available</div>
+
   <header class="site-header">
     <a class="brand" href="/" aria-label="Nexauren Sound home">
       <span class="brand-mark">N</span>
@@ -21,100 +23,120 @@
     <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
 
     <nav class="nav" aria-label="Main navigation">
-      <a href="#shop">Shop</a>
-      <a href="#categories">Categories</a>
-      <a href="#free">Free Sounds</a>
-      <a href="#about">About</a>
-      <a class="nav-account" href="#account">Account</a>
+      <a href="/shop/">Shop</a>
+      <a href="/categories/">Categories</a>
+      <a href="/free/">Free Sounds</a>
+      <a href="/about/">About</a>
+      <a class="nav-account" href="/account/">Account</a>
     </nav>
   </header>
 
   <main>
-    <section class="hero">
+    <section class="hero-shell">
       <div class="hero-copy">
-        <p class="eyebrow">NEXAUREN SOUND · MUSIC PRODUCTION</p>
-        <h1>Sounds made for your <span>next track.</span></h1>
-        <p class="hero-text">
-          Original sample packs, MIDI, presets and production tools for producers building their sound.
-        </p>
+        <p class="eyebrow">NEXAUREN SOUND · ORIGINAL DIGITAL PRODUCTS</p>
+        <h1>Build a track that <span>sounds like you.</span></h1>
+        <p class="hero-text">Sample packs, MIDI, presets and project files made to get an idea moving — without getting in the way of your style.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#shop">Explore sounds</a>
-          <a class="button button-secondary" href="#free">Get free sounds</a>
+          <a class="button button-primary" href="/shop/">Explore the shop</a>
+          <a class="button button-secondary" href="/free/">Get free sounds</a>
+        </div>
+        <div class="hero-meta">
+          <span><i></i> Digital delivery</span>
+          <span><i></i> Producer focused</span>
+          <span><i></i> Made with intention</span>
         </div>
       </div>
-      <div class="hero-art" aria-hidden="true">
-        <div class="orb orb-one"></div>
-        <div class="orb orb-two"></div>
-        <div class="art-card">
-          <span>NEXAUREN</span>
-          <strong>SOUND<br>VOL. 01</strong>
-          <small>AFRO · HOUSE · DANCE</small>
+
+      <div class="hero-visual" aria-label="Nexauren Sound collection artwork">
+        <div class="visual-grid"></div>
+        <div class="visual-note note-one">AFRO<br>HOUSE</div>
+        <div class="visual-note note-two">MIDI<br>PRESETS</div>
+        <div class="record-card">
+          <div class="record-top"><span>NEXAUREN</span><span>001</span></div>
+          <div class="record-center"><strong>SOUND<br>FORWARD</strong><span>BUILD · PLAY · FINISH</span></div>
+          <div class="record-wave"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
         </div>
       </div>
     </section>
 
-    <section class="trust-row" aria-label="Store benefits">
-      <div><strong>Original sounds</strong><span>Created for producers</span></div>
-      <div><strong>Instant delivery</strong><span>Download after purchase</span></div>
-      <div><strong>Built for creators</strong><span>Simple, useful and inspiring</span></div>
+    <section class="signal-row" aria-label="Store highlights">
+      <div><span class="signal-number">01</span><strong>Original products</strong><small>Created around real production needs.</small></div>
+      <div><span class="signal-number">02</span><strong>Simple delivery</strong><small>Buy, access and keep your digital files.</small></div>
+      <div><span class="signal-number">03</span><strong>Built to evolve</strong><small>New sounds and better tools over time.</small></div>
     </section>
 
-    <section id="shop" class="section">
+    <section class="section section-products">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">THE COLLECTION</p>
-          <h2>Featured sounds</h2>
+          <p class="eyebrow">THE LATEST</p>
+          <h2>Fresh from the studio.</h2>
         </div>
-        <a href="#shop" class="text-link">View all →</a>
+        <a class="text-link" href="/shop/">View all products <span>↗</span></a>
       </div>
 
-      <div class="products" id="products" aria-live="polite">
-        <div class="products-state" id="products-loading">
-          <span class="products-spinner" aria-hidden="true"></span>
-          <p>Loading sounds...</p>
-        </div>
+      <div class="products" id="products" data-product-list="home" aria-live="polite">
+        <div class="products-state"><span class="products-spinner"></span><p>Loading sounds...</p></div>
       </div>
     </section>
 
-    <section id="categories" class="category-section">
+    <section class="category-strip">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">BROWSE</p>
-          <h2>Find your sound</h2>
+          <p class="eyebrow">BROWSE BY FORMAT</p>
+          <h2>Pick the starting point.</h2>
         </div>
       </div>
-      <div class="categories">
-        <a href="#shop"><span>01</span><strong>Sample Packs</strong><small>Loops · One-shots · Vocals</small></a>
-        <a href="#shop"><span>02</span><strong>MIDI Packs</strong><small>Melodies · Chords · Ideas</small></a>
-        <a href="#shop"><span>03</span><strong>Presets</strong><small>Synths · FX · Instruments</small></a>
-        <a href="#shop"><span>04</span><strong>Bundles</strong><small>More sounds · Better value</small></a>
+      <div class="categories-grid">
+        <a class="category-card category-lime" href="/shop/?category=samples"><span>01</span><strong>Sample Packs</strong><small>Loops · one-shots · vocals</small><b>↗</b></a>
+        <a class="category-card category-grey" href="/shop/?category=midi"><span>02</span><strong>MIDI Packs</strong><small>Melodies · chords · ideas</small><b>↗</b></a>
+        <a class="category-card category-peach" href="/shop/?category=presets"><span>03</span><strong>Presets</strong><small>Synths · FX · instruments</small><b>↗</b></a>
+        <a class="category-card category-blue" href="/shop/?category=project-files"><span>04</span><strong>Project Files</strong><small>Open the session and learn</small><b>↗</b></a>
       </div>
     </section>
 
-    <section id="free" class="free-section">
+    <section class="free-banner">
+      <div class="free-mark">FREE</div>
       <div>
-        <p class="eyebrow">FREE SOUNDS</p>
-        <h2>Start creating without spending.</h2>
-        <p>Free sounds for producers. No complicated process — choose, download and create.</p>
+        <p class="eyebrow">NO-RISK START</p>
+        <h2>Try something new on the next beat.</h2>
+        <p>Explore the free collection, download what fits your workflow and turn it into your own idea.</p>
       </div>
-      <a class="button button-primary" href="#shop">Explore free sounds</a>
+      <a class="button button-dark" href="/free/">Browse free sounds</a>
     </section>
 
-    <section id="about" class="about-section">
-      <p class="eyebrow">ABOUT NEXAUREN SOUND</p>
-      <h2>A small sound brand with a big focus on creativity.</h2>
-      <p>Nexauren Sound is built around original digital products for music producers — useful sounds, clean presentation and a straightforward buying experience.</p>
+    <section class="story-grid">
+      <div class="story-label"><p class="eyebrow">WHY NEXAUREN SOUND</p><span>05 — STORY</span></div>
+      <div class="story-copy">
+        <h2>Less filler.<br><span>More usable sound.</span></h2>
+        <p>Nexauren Sound is a small independent sound brand focused on products that feel good to open and useful to keep. The goal is simple: give producers more starting points without adding more noise.</p>
+        <a class="text-link" href="/about/">Read the story <span>↗</span></a>
+      </div>
+      <div class="story-card"><strong>CREATE</strong><span>one idea<br>at a time.</span></div>
+    </section>
+
+    <section class="final-cta">
+      <p class="eyebrow">READY WHEN YOU ARE</p>
+      <h2>Open a pack.<br><span>Start a track.</span></h2>
+      <a class="button button-primary" href="/shop/">Enter Nexauren Sound</a>
     </section>
   </main>
 
   <footer class="site-footer">
     <div class="footer-main">
-      <div><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a><p>Sounds for your next track.</p></div>
-      <div class="footer-links"><a href="#shop">Shop</a><a href="#about">About</a><a href="#account">Account</a><a href="#">Privacy</a><a href="#">Terms</a></div>
+      <div>
+        <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
+        <p>Original digital products for music creators.</p>
+      </div>
+      <div class="footer-columns">
+        <div><strong>Store</strong><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a></div>
+        <div><strong>Company</strong><a href="/about/">About</a><a href="/account/">Account</a></div>
+        <div><strong>Legal</strong><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/cookies/">Cookies</a></div>
+      </div>
     </div>
     <div class="footer-bottom"><span>© <span id="year"></span> Nexauren Sound</span><span>Made for producers.</span></div>
   </footer>
 
-  <script src="script.js"></script>
+  <script src="/script.js"></script>
 </body>
 </html>
