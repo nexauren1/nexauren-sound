@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="extra.css">
 </head>
 <body>
   <main class="shell">
@@ -55,77 +56,37 @@
 
         <form id="product-form" class="product-form">
           <input id="product-id" type="hidden">
-
           <div class="form-grid two">
             <label><span>Product name *</span><input id="name" type="text" maxlength="160" required></label>
             <label><span>Slug</span><input id="slug" type="text" maxlength="120" placeholder="auto-generated-from-name"></label>
           </div>
-
           <div class="form-grid two">
-            <label>
-              <span>Product format *</span>
-              <select id="category" required>
-                <option value="samples">Sample Packs</option>
-                <option value="midi">MIDI Packs</option>
-                <option value="presets">Presets</option>
-                <option value="project-files">Project Files</option>
-                <option value="bundles">Bundles</option>
-                <option value="free">Free Downloads</option>
-              </select>
-            </label>
-            <label>
-              <span>Status *</span>
-              <select id="status" required>
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
+            <label><span>Product format *</span><select id="category" required><option value="samples">Sample Packs</option><option value="midi">MIDI Packs</option><option value="presets">Presets</option><option value="project-files">Project Files</option><option value="bundles">Bundles</option><option value="free">Free Downloads</option></select></label>
+            <label><span>Status *</span><select id="status" required><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
           </div>
-
-          <label>
-            <span>Genres / styles</span>
-            <input id="genres" type="text" maxlength="500" placeholder="Amapiano, Afro House, R&amp;B">
-            <small class="field-help">Add up to 12 genres or styles, separated by commas.</small>
-          </label>
-
+          <label><span>Genres / styles</span><input id="genres" type="text" maxlength="500" placeholder="Amapiano, Afro House, R&amp;B"><small class="field-help">Add up to 12 genres or styles, separated by commas.</small></label>
           <label><span>Short description</span><input id="short-description" type="text" maxlength="300"></label>
           <label><span>Description</span><textarea id="description" rows="7" maxlength="5000"></textarea></label>
-
           <div class="form-grid three">
             <label><span>Price</span><input id="price" type="number" min="0" step="0.01" value="0"></label>
             <label><span>Currency</span><select id="currency"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option></select></label>
             <label class="checkbox-row"><input id="is-free" type="checkbox"><span>Free product</span></label>
           </div>
-
           <div class="asset-box">
             <div><p class="asset-title">Product assets</p><p class="asset-note">The database stores the future private B2 file reference. ZIP upload and secure delivery will be connected when B2 credentials are configured.</p></div>
-            <div class="form-grid two">
-              <label><span>Cover URL</span><input id="cover-url" type="url" maxlength="1000"></label>
-              <label><span>B2 file key</span><input id="file-key" type="text" maxlength="500"></label>
-            </div>
-            <div class="form-grid two">
-              <label><span>ZIP file name</span><input id="file-name" type="text" maxlength="255"></label>
-              <label><span>File size (bytes)</span><input id="file-size" type="number" min="0" step="1" value="0"></label>
-            </div>
+            <div class="form-grid two"><label><span>Cover URL</span><input id="cover-url" type="url" maxlength="1000"></label><label><span>B2 file key</span><input id="file-key" type="text" maxlength="500"></label></div>
+            <div class="form-grid two"><label><span>ZIP file name</span><input id="file-name" type="text" maxlength="255"></label><label><span>File size (bytes)</span><input id="file-size" type="number" min="0" step="1" value="0"></label></div>
           </div>
-
-          <div class="form-actions">
-            <button class="button button-primary" type="submit" id="save-button">Save product</button>
-            <p class="form-message" id="form-message" role="alert"></p>
-          </div>
+          <div class="form-actions"><button class="button button-primary" type="submit" id="save-button">Save product</button><p class="form-message" id="form-message" role="alert"></p></div>
         </form>
       </section>
 
       <section class="panel catalog-panel">
         <div class="panel-heading">
           <div><p class="eyebrow">CATALOG</p><h2>All products</h2></div>
-          <div class="header-actions">
-            <button class="button button-secondary" id="seed-button" type="button">Add demo catalog</button>
-            <button class="button button-secondary" id="refresh-button" type="button">Refresh</button>
-          </div>
+          <div class="header-actions"><button class="button button-secondary" id="seed-button" type="button">Add demo catalog</button><button class="button button-secondary" id="refresh-button" type="button">Refresh</button></div>
         </div>
-        <div class="list-note">Adds a starting catalog of sample packs, MIDI, presets, a project, a bundle and one free product. These are demo entries; replace the assets before selling.</div>
+        <div class="list-note">Adds sample packs, MIDI, presets, a project, a bundle and one free product. These are demo entries; replace the assets before selling.</div>
         <div id="products-list" class="products-list"><div class="list-state">Loading products...</div></div>
       </section>
     </section>
