@@ -9,6 +9,7 @@ const ADMIN_COOKIE = 'nexauren_admin';
 const USER_COOKIE = 'nexauren_session';
 const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
 const USER_SESSION_SECONDS = 60 * 60 * 24 * 30;
+const PASSWORD_ITERATIONS = 120000;
 
 const ALLOWED_CATEGORIES = new Set([
   'samples',
@@ -24,8 +25,6 @@ const ALLOWED_STATUS = new Set([
   'published',
   'archived'
 ]);
-
-let authSchemaPromise;
 
 export default {
   async fetch(request, env) {
@@ -47,19 +46,19 @@ export default {
     }
 
     if (url.pathname === '/api/auth/register' && request.method === 'POST') {
-      return authRegister(request, env);
+      return registerUser(request, env);
     }
 
     if (url.pathname === '/api/auth/login' && request.method === 'POST') {
-      return authLogin(request, env);
-    }
-
-    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
-      return authLogout(request, env);
+      return loginUser(request, env);
     }
 
     if (url.pathname === '/api/auth/me' && request.method === 'GET') {
-      return authMe(request, env);
+      return getCurrentUser(request, env);
+    }
+
+    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+      return logoutUser(request, env);
     }
 
     if (url.pathname === '/api/admin/login' && request.method === 'POST') {
@@ -122,6 +121,19 @@ export default {
       return deleteProduct(env, id);
     }
 
+    if (
+      url.pathname === '/api/admin/seed-demo' &&
+      request.method === 'POST'
+    ) {
+      const session = await requireAdmin(request, env);
+
+      if (!session.ok) {
+        return session.response;
+      }
+
+      return seedDemoProducts(env);
+    }
+
     return serveAsset(request, env);
   }
 };
@@ -148,6 +160,446 @@ async function serveAsset(request, env) {
   return env.ASSETS.fetch(request);
 }
 
+async function ensureAuthSchema(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_credentials (
+      user_id TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `).run();
+
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `).run();
+
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash)'
+  ).run();
+
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id)'
+  ).run();
+}
+
+async function registerUser(request, env) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'Account database is not configured'
+    }, 500);
+  }
+
+  try {
+    await ensureAuthSchema(env.DB);
+
+    const body = await request.json();
+    const name = cleanText(body?.name, 80);
+    const email = normalizeEmail(body?.email);
+    const password = String(body?.password || '');
+
+    if (name.length < 2) {
+      return json({
+        ok: false,
+        error: 'Please enter your name.'
+      }, 400);
+    }
+
+    if (!isValidEmail(email)) {
+      return json({
+        ok: false,
+        error: 'Please enter a valid email address.'
+      }, 400);
+    }
+
+    if (password.length < 8 || password.length > 128) {
+      return json({
+        ok: false,
+        error: 'Password must be between 8 and 128 characters.'
+      }, 400);
+    }
+
+    const existing = await env.DB
+      .prepare('SELECT id FROM users WHERE email = ? LIMIT 1')
+      .bind(email)
+      .first();
+
+    if (existing) {
+      return json({
+        ok: false,
+        error: 'An account with this email already exists.'
+      }, 409);
+    }
+
+    const userId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const salt = new Uint8Array(16);
+    crypto.getRandomValues(salt);
+    const passwordHash = await derivePassword(
+      password,
+      salt
+    );
+
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO users (
+          id,
+          email,
+          name,
+          status,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, 'active', ?, ?)
+      `).bind(
+        userId,
+        email,
+        name,
+        now,
+        now
+      ),
+      env.DB.prepare(`
+        INSERT INTO user_credentials (
+          user_id,
+          password_hash,
+          salt,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `).bind(
+        userId,
+        passwordHash,
+        toBase64Url(salt),
+        now,
+        now
+      )
+    ]);
+
+    const session = await createUserSession(
+      env.DB,
+      userId
+    );
+
+    return json({
+      ok: true,
+      user: {
+        id: userId,
+        email,
+        name,
+        status: 'active'
+      }
+    }, 201, {
+      'Set-Cookie': buildCookie(
+        USER_COOKIE,
+        session.token,
+        USER_SESSION_SECONDS,
+        'Lax'
+      )
+    });
+  } catch (error) {
+    console.error('registerUser', error);
+
+    return json({
+      ok: false,
+      error: 'Could not create your account right now.'
+    }, 500);
+  }
+}
+
+async function loginUser(request, env) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'Account database is not configured'
+    }, 500);
+  }
+
+  try {
+    await ensureAuthSchema(env.DB);
+
+    const body = await request.json();
+    const email = normalizeEmail(body?.email);
+    const password = String(body?.password || '');
+
+    if (!isValidEmail(email) || !password) {
+      return json({
+        ok: false,
+        error: 'Enter your email and password.'
+      }, 400);
+    }
+
+    const user = await env.DB
+      .prepare(`
+        SELECT
+          u.id,
+          u.email,
+          u.name,
+          u.status,
+          c.password_hash,
+          c.salt
+        FROM users u
+        JOIN user_credentials c
+          ON c.user_id = u.id
+        WHERE u.email = ?
+        LIMIT 1
+      `)
+      .bind(email)
+      .first();
+
+    if (!user || user.status !== 'active') {
+      return json({
+        ok: false,
+        error: 'Invalid email or password.'
+      }, 401);
+    }
+
+    const valid = await verifyPassword(
+      password,
+      user.salt,
+      user.password_hash
+    );
+
+    if (!valid) {
+      return json({
+        ok: false,
+        error: 'Invalid email or password.'
+      }, 401);
+    }
+
+    const now = new Date().toISOString();
+
+    await env.DB
+      .prepare(`
+        UPDATE users
+        SET last_login_at = ?, updated_at = ?
+        WHERE id = ?
+      `)
+      .bind(now, now, user.id)
+      .run();
+
+    const session = await createUserSession(
+      env.DB,
+      user.id
+    );
+
+    return json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status
+      }
+    }, 200, {
+      'Set-Cookie': buildCookie(
+        USER_COOKIE,
+        session.token,
+        USER_SESSION_SECONDS,
+        'Lax'
+      )
+    });
+  } catch (error) {
+    console.error('loginUser', error);
+
+    return json({
+      ok: false,
+      error: 'Could not sign you in right now.'
+    }, 500);
+  }
+}
+
+async function getCurrentUser(request, env) {
+  if (!env.DB) {
+    return json({
+      ok: true,
+      authenticated: false
+    });
+  }
+
+  try {
+    await ensureAuthSchema(env.DB);
+    const token = getCookie(request, USER_COOKIE);
+
+    if (!token) {
+      return json({
+        ok: true,
+        authenticated: false
+      });
+    }
+
+    const tokenHash = await hashText(token);
+    const now = Math.floor(Date.now() / 1000);
+
+    const user = await env.DB
+      .prepare(`
+        SELECT
+          u.id,
+          u.email,
+          u.name,
+          u.status,
+          s.expires_at
+        FROM auth_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = ?
+          AND s.expires_at > ?
+        LIMIT 1
+      `)
+      .bind(tokenHash, now)
+      .first();
+
+    if (!user || user.status !== 'active') {
+      return json({
+        ok: true,
+        authenticated: false
+      }, 200, {
+        'Set-Cookie': buildCookie(USER_COOKIE, '', 0, 'Lax')
+      });
+    }
+
+    return json({
+      ok: true,
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status
+      }
+    });
+  } catch (error) {
+    console.error('getCurrentUser', error);
+
+    return json({
+      ok: true,
+      authenticated: false
+    });
+  }
+}
+
+async function logoutUser(request, env) {
+  if (env.DB) {
+    try {
+      await ensureAuthSchema(env.DB);
+      const token = getCookie(request, USER_COOKIE);
+
+      if (token) {
+        const tokenHash = await hashText(token);
+
+        await env.DB
+          .prepare('DELETE FROM auth_sessions WHERE token_hash = ?')
+          .bind(tokenHash)
+          .run();
+      }
+    } catch (error) {
+      console.error('logoutUser', error);
+    }
+  }
+
+  return json({
+    ok: true
+  }, 200, {
+    'Set-Cookie': buildCookie(USER_COOKIE, '', 0, 'Lax')
+  });
+}
+
+async function createUserSession(db, userId) {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+
+  const token = toBase64Url(bytes);
+  const tokenHash = await hashText(token);
+  const expiresAt = Math.floor(
+    Date.now() / 1000 + USER_SESSION_SECONDS
+  );
+  const createdAt = new Date().toISOString();
+
+  await db
+    .prepare(`
+      INSERT INTO auth_sessions (
+        id,
+        user_id,
+        token_hash,
+        expires_at,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `)
+    .bind(
+      crypto.randomUUID(),
+      userId,
+      tokenHash,
+      expiresAt,
+      createdAt
+    )
+    .run();
+
+  return { token };
+}
+
+async function derivePassword(password, salt) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: PASSWORD_ITERATIONS,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    256
+  );
+
+  return toBase64Url(new Uint8Array(bits));
+}
+
+async function verifyPassword(
+  password,
+  saltText,
+  expectedText
+) {
+  const salt = fromBase64Url(saltText);
+  const expected = fromBase64Url(expectedText);
+  const actualText = await derivePassword(
+    password,
+    salt
+  );
+  const actual = fromBase64Url(actualText);
+
+  return constantTimeEqual(actual, expected);
+}
+
+async function hashText(value) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(String(value))
+  );
+
+  return toBase64Url(new Uint8Array(digest));
+}
+
+function normalizeEmail(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function getProducts(env) {
   if (!env.DB) {
     return json({
@@ -157,6 +609,8 @@ async function getProducts(env) {
   }
 
   try {
+    await ensureProductTags(env.DB);
+
     const result = await env.DB
       .prepare(`
         SELECT
@@ -208,6 +662,8 @@ async function getProduct(env, slug) {
   }
 
   try {
+    await ensureProductTags(env.DB);
+
     const result = await env.DB
       .prepare(`
         SELECT
@@ -270,7 +726,6 @@ function normalizeGenres(value) {
   const raw = Array.isArray(value)
     ? value
     : String(value ?? '').split(/\|\||,/);
-
   const result = [];
   const seen = new Set();
 
@@ -424,6 +879,8 @@ async function getAdminProducts(env) {
   }
 
   try {
+    await ensureProductTags(env.DB);
+
     const result = await env.DB
       .prepare(`
         SELECT
@@ -737,6 +1194,106 @@ async function deleteProduct(env, id) {
   }
 }
 
+async function seedDemoProducts(env) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'D1 database is not configured'
+    }, 500);
+  }
+
+  const demoProducts = [
+    ['Amapiano Essentials Vol. 01', 'amapiano-essentials-vol-01', 'samples', 9, ['Amapiano', 'Afro House', 'Afrobeats'], 'Demo catalog product. Replace the cover, file and description before selling.'],
+    ['Midnight R&B', 'midnight-rnb', 'samples', 12, ['R&B', 'Neo Soul', 'Soul'], 'Demo catalog product for a modern R&B sample collection.'],
+    ['Afro Pop Toolkit', 'afro-pop-toolkit', 'samples', 10, ['Afropop', 'Afrobeats', 'Pop'], 'Demo catalog product for an energetic Afro Pop workflow.'],
+    ['Motion House MIDI', 'motion-house-midi', 'midi', 7, ['House', 'Tech House', 'Dance'], 'Demo MIDI pack with chord and melody ideas.'],
+    ['Pop Hook MIDI', 'pop-hook-midi', 'midi', 5, ['Pop', 'Dance', 'R&B'], 'Demo MIDI collection focused on hooks and songwriting ideas.'],
+    ['Nexa Keys', 'nexa-keys', 'presets', 12, ['R&B', 'Pop', 'Ambient'], 'Demo preset pack for warm keys, pads and creative textures.'],
+    ['After Dark Project', 'after-dark-project', 'project-files', 19, ['Afro House', 'House', 'Dance'], 'Demo project file showing a modern dance production workflow.'],
+    ['Producer Starter Bundle', 'producer-starter-bundle', 'bundles', 29, ['Amapiano', 'R&B', 'Pop', 'House'], 'Demo bundle combining multiple Nexauren Sound formats.'],
+    ['Free Amapiano Starter', 'free-amapiano-starter', 'free', 0, ['Amapiano', 'Afro House'], 'Demo free download. Replace the file reference with the real release.']
+  ];
+
+  try {
+    await ensureProductTags(env.DB);
+
+    const count = await env.DB
+      .prepare('SELECT COUNT(*) AS total FROM products')
+      .first();
+
+    if (Number(count?.total || 0) > 0) {
+      return json({
+        ok: false,
+        error: 'The catalog already contains products'
+      }, 409);
+    }
+
+    const now = new Date().toISOString();
+
+    for (const [name, slug, category, price, genres, description] of demoProducts) {
+      const id = crypto.randomUUID();
+
+      await env.DB
+        .prepare(`
+          INSERT INTO products (
+            id,
+            name,
+            slug,
+            description,
+            short_description,
+            category,
+            price,
+            currency,
+            cover_url,
+            file_key,
+            file_name,
+            file_size,
+            status,
+            is_free,
+            downloads_count,
+            sales_count,
+            created_at,
+            updated_at,
+            published_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'USD', '', '', '', 0, 'published', ?, 0, 0, ?, ?, ?)
+        `)
+        .bind(
+          id,
+          name,
+          slug,
+          description,
+          description,
+          category,
+          price,
+          price === 0 ? 1 : 0,
+          now,
+          now,
+          now
+        )
+        .run();
+
+      await replaceProductGenres(
+        env,
+        id,
+        genres
+      );
+    }
+
+    return json({
+      ok: true,
+      created: demoProducts.length,
+      message: 'Demo catalog created. Replace demo assets before selling.'
+    });
+  } catch (error) {
+    console.error('seedDemoProducts', error);
+
+    return json({
+      ok: false,
+      error: 'Could not create the demo catalog'
+    }, 500);
+  }
+}
+
 async function readProductBody(request) {
   let body;
 
@@ -848,7 +1405,19 @@ async function readProductBody(request) {
   };
 }
 
+async function ensureProductTags(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS product_tags (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      tag TEXT NOT NULL
+    )
+  `).run();
+}
+
 async function replaceProductGenres(env, productId, genres) {
+  await ensureProductTags(env.DB);
+
   await env.DB
     .prepare('DELETE FROM product_tags WHERE product_id = ?')
     .bind(productId)
@@ -872,453 +1441,6 @@ async function replaceProductGenres(env, productId, genres) {
   }
 }
 
-async function authSchema(env) {
-  if (!env.DB) {
-    throw new Error('D1 database is not configured');
-  }
-
-  if (!authSchemaPromise) {
-    authSchemaPromise = env.DB.batch([
-      env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS user_credentials (
-          user_id TEXT PRIMARY KEY,
-          password_hash TEXT NOT NULL,
-          salt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `),
-      env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS auth_sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          token_hash TEXT NOT NULL UNIQUE,
-          expires_at INTEGER NOT NULL,
-          created_at TEXT NOT NULL
-        )
-      `),
-      env.DB.prepare(`
-        CREATE INDEX IF NOT EXISTS idx_auth_sessions_token
-        ON auth_sessions (token_hash)
-      `),
-      env.DB.prepare(`
-        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
-        ON auth_sessions (user_id)
-      `)
-    ]).catch((error) => {
-      authSchemaPromise = null;
-      throw error;
-    });
-  }
-
-  await authSchemaPromise;
-}
-
-async function authRegister(request, env) {
-  try {
-    await authSchema(env);
-    const body = await request.json();
-    const name = cleanText(body?.name, 80);
-    const email = normalizeEmail(body?.email);
-    const password = String(body?.password || '');
-
-    if (name.length < 2) {
-      return json({
-        ok: false,
-        error: 'Please enter your name.'
-      }, 400);
-    }
-
-    if (!isValidEmail(email)) {
-      return json({
-        ok: false,
-        error: 'Please enter a valid email address.'
-      }, 400);
-    }
-
-    if (password.length < 8 || password.length > 128) {
-      return json({
-        ok: false,
-        error: 'Password must be between 8 and 128 characters.'
-      }, 400);
-    }
-
-    const existing = await env.DB
-      .prepare('SELECT id FROM users WHERE email = ? LIMIT 1')
-      .bind(email)
-      .first();
-
-    if (existing) {
-      return json({
-        ok: false,
-        error: 'An account with this email already exists.'
-      }, 409);
-    }
-
-    const userId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const salt = crypto.getRandomValues(
-      new Uint8Array(16)
-    );
-    const passwordHash = await derivePassword(
-      password,
-      salt
-    );
-
-    await env.DB.batch([
-      env.DB
-        .prepare(`
-          INSERT INTO users (
-            id,
-            email,
-            name,
-            status,
-            created_at,
-            updated_at,
-            last_login_at
-          ) VALUES (?, ?, ?, 'active', ?, ?, ?)
-        `)
-        .bind(
-          userId,
-          email,
-          name,
-          now,
-          now,
-          now
-        ),
-      env.DB
-        .prepare(`
-          INSERT INTO user_credentials (
-            user_id,
-            password_hash,
-            salt,
-            created_at,
-            updated_at
-          ) VALUES (?, ?, ?, ?, ?)
-        `)
-        .bind(
-          userId,
-          passwordHash,
-          toBase64Url(salt),
-          now,
-          now
-        )
-    ]);
-
-    const session = await createUserSession(
-      env,
-      userId
-    );
-
-    return json({
-      ok: true,
-      user: {
-        id: userId,
-        email,
-        name,
-        status: 'active'
-      }
-    }, 201, {
-      'Set-Cookie': session.cookie
-    });
-  } catch (error) {
-    console.error('authRegister', error);
-
-    return json({
-      ok: false,
-      error: 'Could not create your account right now.'
-    }, 500);
-  }
-}
-
-async function authLogin(request, env) {
-  try {
-    await authSchema(env);
-    const body = await request.json();
-    const email = normalizeEmail(body?.email);
-    const password = String(body?.password || '');
-
-    if (!isValidEmail(email) || !password) {
-      return json({
-        ok: false,
-        error: 'Email or password is incorrect.'
-      }, 401);
-    }
-
-    const user = await env.DB
-      .prepare(`
-        SELECT
-          u.id,
-          u.email,
-          u.name,
-          u.status,
-          c.password_hash,
-          c.salt
-        FROM users u
-        JOIN user_credentials c
-          ON c.user_id = u.id
-        WHERE u.email = ?
-        LIMIT 1
-      `)
-      .bind(email)
-      .first();
-
-    if (!user) {
-      return json({
-        ok: false,
-        error: 'Email or password is incorrect.'
-      }, 401);
-    }
-
-    const valid = await verifyPassword(
-      password,
-      user.salt,
-      user.password_hash
-    );
-
-    if (!valid) {
-      return json({
-        ok: false,
-        error: 'Email or password is incorrect.'
-      }, 401);
-    }
-
-    if (user.status && user.status !== 'active') {
-      return json({
-        ok: false,
-        error: 'This account is not active.'
-      }, 403);
-    }
-
-    const now = new Date().toISOString();
-
-    await env.DB
-      .prepare(
-        'UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?'
-      )
-      .bind(now, now, user.id)
-      .run();
-
-    const session = await createUserSession(
-      env,
-      user.id
-    );
-
-    return json({
-      ok: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        status: user.status || 'active'
-      }
-    }, 200, {
-      'Set-Cookie': session.cookie
-    });
-  } catch (error) {
-    console.error('authLogin', error);
-
-    return json({
-      ok: false,
-      error: 'Could not sign in right now.'
-    }, 500);
-  }
-}
-
-async function authLogout(request, env) {
-  try {
-    await authSchema(env);
-    const cookies = parseCookies(
-      request.headers.get('Cookie') || ''
-    );
-    const token = cookies[USER_COOKIE];
-
-    if (token) {
-      const tokenHash = await hashText(token);
-      await env.DB
-        .prepare(
-          'DELETE FROM auth_sessions WHERE token_hash = ?'
-        )
-        .bind(tokenHash)
-        .run();
-    }
-  } catch (error) {
-    console.error('authLogout', error);
-  }
-
-  return json({
-    ok: true
-  }, 200, {
-    'Set-Cookie': buildCookie(
-      USER_COOKIE,
-      '',
-      0,
-      'Lax'
-    )
-  });
-}
-
-async function authMe(request, env) {
-  try {
-    await authSchema(env);
-    const cookies = parseCookies(
-      request.headers.get('Cookie') || ''
-    );
-    const token = cookies[USER_COOKIE];
-
-    if (!token) {
-      return json({
-        ok: true,
-        authenticated: false,
-        user: null
-      });
-    }
-
-    const tokenHash = await hashText(token);
-    const now = Math.floor(Date.now() / 1000);
-    const session = await env.DB
-      .prepare(`
-        SELECT
-          s.id AS session_id,
-          u.id,
-          u.email,
-          u.name,
-          u.status
-        FROM auth_sessions s
-        JOIN users u ON u.id = s.user_id
-        WHERE s.token_hash = ?
-          AND s.expires_at > ?
-        LIMIT 1
-      `)
-      .bind(tokenHash, now)
-      .first();
-
-    if (!session || (session.status && session.status !== 'active')) {
-      return json({
-        ok: true,
-        authenticated: false,
-        user: null
-      }, 200, {
-        'Set-Cookie': buildCookie(
-          USER_COOKIE,
-          '',
-          0,
-          'Lax'
-        )
-      });
-    }
-
-    return json({
-      ok: true,
-      authenticated: true,
-      user: {
-        id: session.id,
-        email: session.email,
-        name: session.name,
-        status: session.status || 'active'
-      }
-    });
-  } catch (error) {
-    console.error('authMe', error);
-
-    return json({
-      ok: false,
-      error: 'Could not check your account.'
-    }, 500);
-  }
-}
-
-async function createUserSession(env, userId) {
-  const rawToken = toBase64Url(
-    crypto.getRandomValues(new Uint8Array(32))
-  );
-  const tokenHash = await hashText(rawToken);
-  const sessionId = crypto.randomUUID();
-  const expiresAt = Math.floor(Date.now() / 1000) +
-    USER_SESSION_SECONDS;
-  const createdAt = new Date().toISOString();
-
-  await env.DB
-    .prepare(`
-      INSERT INTO auth_sessions (
-        id,
-        user_id,
-        token_hash,
-        expires_at,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?)
-    `)
-    .bind(
-      sessionId,
-      userId,
-      tokenHash,
-      expiresAt,
-      createdAt
-    )
-    .run();
-
-  return {
-    cookie: buildCookie(
-      USER_COOKIE,
-      rawToken,
-      USER_SESSION_SECONDS,
-      'Lax'
-    )
-  };
-}
-
-async function derivePassword(password, salt) {
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt,
-      iterations: 120000,
-      hash: 'SHA-256'
-    },
-    baseKey,
-    256
-  );
-
-  return toBase64Url(new Uint8Array(bits));
-}
-
-async function verifyPassword(password, saltText, expected) {
-  const salt = fromBase64Url(saltText);
-  const actual = await derivePassword(
-    password,
-    salt
-  );
-
-  return safeEqual(actual, expected);
-}
-
-function normalizeEmail(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase();
-}
-
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-async function hashText(value) {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(String(value))
-  );
-
-  return toBase64Url(new Uint8Array(digest));
-}
-
 function cleanText(value, maxLength) {
   return String(value ?? '')
     .trim()
@@ -1338,6 +1460,10 @@ async function safeEqual(a, b) {
   const left = new TextEncoder().encode(String(a));
   const right = new TextEncoder().encode(String(b));
 
+  return constantTimeEqual(left, right);
+}
+
+function constantTimeEqual(left, right) {
   if (left.length !== right.length) {
     return false;
   }
@@ -1386,7 +1512,7 @@ function toBase64Url(bytes) {
 }
 
 function fromBase64Url(value) {
-  const normalized = String(value)
+  const normalized = String(value || '')
     .replace(/-/g, '+')
     .replace(/_/g, '/');
   const padded = normalized.padEnd(
@@ -1396,8 +1522,8 @@ function fromBase64Url(value) {
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
 
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
   }
 
   return bytes;
@@ -1408,13 +1534,17 @@ function parseCookies(header) {
     const [key, ...rest] = part.trim().split('=');
 
     if (key) {
-      cookies[key] = decodeURIComponent(
-        rest.join('=')
-      );
+      cookies[key] = decodeURIComponent(rest.join('='));
     }
 
     return cookies;
   }, {});
+}
+
+function getCookie(request, name) {
+  return parseCookies(
+    request.headers.get('Cookie') || ''
+  )[name] || '';
 }
 
 function buildCookie(name, value, maxAge, sameSite) {
