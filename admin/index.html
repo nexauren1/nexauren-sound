@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f7f7f4">
+  <meta name="theme-color" content="#f4f5ef">
   <meta name="description" content="Nexauren Sound product administration.">
   <title>Nexauren Sound — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,22 +14,14 @@
 <body>
   <main class="shell">
     <section class="login-card" id="login-screen">
-      <a class="brand" href="/">
-        <span class="brand-mark">N</span>
-        <span>NEXAUREN <em>SOUND</em></span>
-      </a>
-
+      <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
       <div class="login-copy">
         <p class="eyebrow">PRIVATE ADMIN</p>
         <h1>Manage your products.</h1>
         <p>Add and update products directly in Cloudflare D1.</p>
       </div>
-
       <form id="login-form" class="stack-form">
-        <label>
-          <span>Admin key</span>
-          <input id="admin-key" name="key" type="password" autocomplete="current-password" placeholder="Enter your admin key" required>
-        </label>
+        <label><span>Admin key</span><input id="admin-key" name="key" type="password" autocomplete="current-password" placeholder="Enter your admin key" required></label>
         <button class="button button-primary" type="submit">Enter admin</button>
         <p class="form-message" id="login-message" role="alert"></p>
       </form>
@@ -38,10 +30,7 @@
     <section class="admin-shell hidden" id="admin-screen">
       <header class="admin-header">
         <div>
-          <a class="brand" href="/">
-            <span class="brand-mark">N</span>
-            <span>NEXAUREN <em>SOUND</em></span>
-          </a>
+          <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
           <p class="eyebrow">PRODUCT ADMIN</p>
           <h1>Products</h1>
         </div>
@@ -60,10 +49,7 @@
 
       <section class="panel editor-panel">
         <div class="panel-heading">
-          <div>
-            <p class="eyebrow">EDITOR</p>
-            <h2 id="form-title">Create product</h2>
-          </div>
+          <div><p class="eyebrow">EDITOR</p><h2 id="form-title">Create product</h2></div>
           <button class="button button-secondary hidden" id="cancel-edit" type="button">Cancel edit</button>
         </div>
 
@@ -71,19 +57,13 @@
           <input id="product-id" type="hidden">
 
           <div class="form-grid two">
-            <label>
-              <span>Product name *</span>
-              <input id="name" type="text" maxlength="160" required>
-            </label>
-            <label>
-              <span>Slug</span>
-              <input id="slug" type="text" maxlength="120" placeholder="auto-generated-from-name">
-            </label>
+            <label><span>Product name *</span><input id="name" type="text" maxlength="160" required></label>
+            <label><span>Slug</span><input id="slug" type="text" maxlength="120" placeholder="auto-generated-from-name"></label>
           </div>
 
           <div class="form-grid two">
             <label>
-              <span>Category *</span>
+              <span>Product format *</span>
               <select id="category" required>
                 <option value="samples">Sample Packs</option>
                 <option value="midi">MIDI Packs</option>
@@ -104,58 +84,29 @@
           </div>
 
           <label>
-            <span>Short description</span>
-            <input id="short-description" type="text" maxlength="300">
+            <span>Genres / styles</span>
+            <input id="genres" type="text" maxlength="500" placeholder="Amapiano, Afro House, R&amp;B">
+            <small class="field-help">Add up to 12 genres or styles, separated by commas.</small>
           </label>
 
-          <label>
-            <span>Description</span>
-            <textarea id="description" rows="7" maxlength="5000"></textarea>
-          </label>
+          <label><span>Short description</span><input id="short-description" type="text" maxlength="300"></label>
+          <label><span>Description</span><textarea id="description" rows="7" maxlength="5000"></textarea></label>
 
           <div class="form-grid three">
-            <label>
-              <span>Price</span>
-              <input id="price" type="number" min="0" step="0.01" value="0">
-            </label>
-            <label>
-              <span>Currency</span>
-              <select id="currency">
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-              </select>
-            </label>
-            <label class="checkbox-row">
-              <input id="is-free" type="checkbox">
-              <span>Free product</span>
-            </label>
+            <label><span>Price</span><input id="price" type="number" min="0" step="0.01" value="0"></label>
+            <label><span>Currency</span><select id="currency"><option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option></select></label>
+            <label class="checkbox-row"><input id="is-free" type="checkbox"><span>Free product</span></label>
           </div>
 
           <div class="asset-box">
-            <div>
-              <p class="asset-title">Product assets</p>
-              <p class="asset-note">The database is ready for B2. For now, these fields store the private file reference and cover URL.</p>
+            <div><p class="asset-title">Product assets</p><p class="asset-note">The database stores the future private B2 file reference. ZIP upload and secure delivery will be connected when B2 credentials are configured.</p></div>
+            <div class="form-grid two">
+              <label><span>Cover URL</span><input id="cover-url" type="url" maxlength="1000"></label>
+              <label><span>B2 file key</span><input id="file-key" type="text" maxlength="500"></label>
             </div>
             <div class="form-grid two">
-              <label>
-                <span>Cover URL</span>
-                <input id="cover-url" type="url" maxlength="1000">
-              </label>
-              <label>
-                <span>B2 file key</span>
-                <input id="file-key" type="text" maxlength="500">
-              </label>
-            </div>
-            <div class="form-grid two">
-              <label>
-                <span>ZIP file name</span>
-                <input id="file-name" type="text" maxlength="255">
-              </label>
-              <label>
-                <span>File size (bytes)</span>
-                <input id="file-size" type="number" min="0" step="1" value="0">
-              </label>
+              <label><span>ZIP file name</span><input id="file-name" type="text" maxlength="255"></label>
+              <label><span>File size (bytes)</span><input id="file-size" type="number" min="0" step="1" value="0"></label>
             </div>
           </div>
 
@@ -168,15 +119,10 @@
 
       <section class="panel catalog-panel">
         <div class="panel-heading">
-          <div>
-            <p class="eyebrow">CATALOG</p>
-            <h2>All products</h2>
-          </div>
+          <div><p class="eyebrow">CATALOG</p><h2>All products</h2></div>
           <button class="button button-secondary" id="refresh-button" type="button">Refresh</button>
         </div>
-        <div id="products-list" class="products-list">
-          <div class="list-state">Loading products...</div>
-        </div>
+        <div id="products-list" class="products-list"><div class="list-state">Loading products...</div></div>
       </section>
     </section>
   </main>
