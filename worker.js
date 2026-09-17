@@ -6,7 +6,9 @@ const JSON_HEADERS = {
 };
 
 const ADMIN_COOKIE = 'nexauren_admin';
+const USER_COOKIE = 'nexauren_session';
 const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
+const USER_SESSION_SECONDS = 60 * 60 * 24 * 30;
 
 const ALLOWED_CATEGORIES = new Set([
   'samples',
@@ -22,6 +24,8 @@ const ALLOWED_STATUS = new Set([
   'published',
   'archived'
 ]);
+
+let authSchemaPromise;
 
 export default {
   async fetch(request, env) {
@@ -40,6 +44,22 @@ export default {
         database: Boolean(env.DB),
         assets: Boolean(env.ASSETS)
       });
+    }
+
+    if (url.pathname === '/api/auth/register' && request.method === 'POST') {
+      return authRegister(request, env);
+    }
+
+    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      return authLogin(request, env);
+    }
+
+    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+      return authLogout(request, env);
+    }
+
+    if (url.pathname === '/api/auth/me' && request.method === 'GET') {
+      return authMe(request, env);
     }
 
     if (url.pathname === '/api/admin/login' && request.method === 'POST') {
@@ -239,6 +259,42 @@ async function getProduct(env, slug) {
   }
 }
 
+function addGenreArrays(products) {
+  return products.map((product) => ({
+    ...product,
+    genres: normalizeGenres(product.genre_tags)
+  }));
+}
+
+function normalizeGenres(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value ?? '').split(/\|\||,/);
+
+  const result = [];
+  const seen = new Set();
+
+  for (const item of raw) {
+    const clean = cleanText(item, 50)
+      .replace(/\s+/g, ' ')
+      .trim();
+    const key = clean.toLowerCase();
+
+    if (!clean || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(clean);
+
+    if (result.length >= 12) {
+      break;
+    }
+  }
+
+  return result;
+}
+
 async function adminLogin(request, env) {
   if (!env.ADMIN_KEY) {
     return json({
@@ -271,8 +327,10 @@ async function adminLogin(request, env) {
       message: 'Admin session created'
     }, 200, {
       'Set-Cookie': buildCookie(
+        ADMIN_COOKIE,
         value,
-        ADMIN_SESSION_SECONDS
+        ADMIN_SESSION_SECONDS,
+        'Strict'
       )
     });
   } catch {
@@ -287,7 +345,12 @@ function adminLogout() {
   return json({
     ok: true
   }, 200, {
-    'Set-Cookie': buildCookie('', 0)
+    'Set-Cookie': buildCookie(
+      ADMIN_COOKIE,
+      '',
+      0,
+      'Strict'
+    )
   });
 }
 
@@ -785,43 +848,6 @@ async function readProductBody(request) {
   };
 }
 
-function addGenreArrays(products) {
-  return products.map((product) => ({
-    ...product,
-    genres: normalizeGenres(product.genre_tags)
-  }));
-}
-
-function normalizeGenres(value) {
-  const raw = Array.isArray(value)
-    ? value
-    : String(value ?? '').split(',');
-
-  const result = [];
-  const seen = new Set();
-
-  for (const item of raw) {
-    const clean = cleanText(item, 40)
-      .replace(/\|/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const key = clean.toLowerCase();
-
-    if (!clean || seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    result.push(clean);
-
-    if (result.length >= 8) {
-      break;
-    }
-  }
-
-  return result;
-}
-
 async function replaceProductGenres(env, productId, genres) {
   await env.DB
     .prepare('DELETE FROM product_tags WHERE product_id = ?')
@@ -844,6 +870,453 @@ async function replaceProductGenres(env, productId, genres) {
       )
       .run();
   }
+}
+
+async function authSchema(env) {
+  if (!env.DB) {
+    throw new Error('D1 database is not configured');
+  }
+
+  if (!authSchemaPromise) {
+    authSchemaPromise = env.DB.batch([
+      env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS user_credentials (
+          user_id TEXT PRIMARY KEY,
+          password_hash TEXT NOT NULL,
+          salt TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `),
+      env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
+          expires_at INTEGER NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      `),
+      env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_token
+        ON auth_sessions (token_hash)
+      `),
+      env.DB.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
+        ON auth_sessions (user_id)
+      `)
+    ]).catch((error) => {
+      authSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  await authSchemaPromise;
+}
+
+async function authRegister(request, env) {
+  try {
+    await authSchema(env);
+    const body = await request.json();
+    const name = cleanText(body?.name, 80);
+    const email = normalizeEmail(body?.email);
+    const password = String(body?.password || '');
+
+    if (name.length < 2) {
+      return json({
+        ok: false,
+        error: 'Please enter your name.'
+      }, 400);
+    }
+
+    if (!isValidEmail(email)) {
+      return json({
+        ok: false,
+        error: 'Please enter a valid email address.'
+      }, 400);
+    }
+
+    if (password.length < 8 || password.length > 128) {
+      return json({
+        ok: false,
+        error: 'Password must be between 8 and 128 characters.'
+      }, 400);
+    }
+
+    const existing = await env.DB
+      .prepare('SELECT id FROM users WHERE email = ? LIMIT 1')
+      .bind(email)
+      .first();
+
+    if (existing) {
+      return json({
+        ok: false,
+        error: 'An account with this email already exists.'
+      }, 409);
+    }
+
+    const userId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const salt = crypto.getRandomValues(
+      new Uint8Array(16)
+    );
+    const passwordHash = await derivePassword(
+      password,
+      salt
+    );
+
+    await env.DB.batch([
+      env.DB
+        .prepare(`
+          INSERT INTO users (
+            id,
+            email,
+            name,
+            status,
+            created_at,
+            updated_at,
+            last_login_at
+          ) VALUES (?, ?, ?, 'active', ?, ?, ?)
+        `)
+        .bind(
+          userId,
+          email,
+          name,
+          now,
+          now,
+          now
+        ),
+      env.DB
+        .prepare(`
+          INSERT INTO user_credentials (
+            user_id,
+            password_hash,
+            salt,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?)
+        `)
+        .bind(
+          userId,
+          passwordHash,
+          toBase64Url(salt),
+          now,
+          now
+        )
+    ]);
+
+    const session = await createUserSession(
+      env,
+      userId
+    );
+
+    return json({
+      ok: true,
+      user: {
+        id: userId,
+        email,
+        name,
+        status: 'active'
+      }
+    }, 201, {
+      'Set-Cookie': session.cookie
+    });
+  } catch (error) {
+    console.error('authRegister', error);
+
+    return json({
+      ok: false,
+      error: 'Could not create your account right now.'
+    }, 500);
+  }
+}
+
+async function authLogin(request, env) {
+  try {
+    await authSchema(env);
+    const body = await request.json();
+    const email = normalizeEmail(body?.email);
+    const password = String(body?.password || '');
+
+    if (!isValidEmail(email) || !password) {
+      return json({
+        ok: false,
+        error: 'Email or password is incorrect.'
+      }, 401);
+    }
+
+    const user = await env.DB
+      .prepare(`
+        SELECT
+          u.id,
+          u.email,
+          u.name,
+          u.status,
+          c.password_hash,
+          c.salt
+        FROM users u
+        JOIN user_credentials c
+          ON c.user_id = u.id
+        WHERE u.email = ?
+        LIMIT 1
+      `)
+      .bind(email)
+      .first();
+
+    if (!user) {
+      return json({
+        ok: false,
+        error: 'Email or password is incorrect.'
+      }, 401);
+    }
+
+    const valid = await verifyPassword(
+      password,
+      user.salt,
+      user.password_hash
+    );
+
+    if (!valid) {
+      return json({
+        ok: false,
+        error: 'Email or password is incorrect.'
+      }, 401);
+    }
+
+    if (user.status && user.status !== 'active') {
+      return json({
+        ok: false,
+        error: 'This account is not active.'
+      }, 403);
+    }
+
+    const now = new Date().toISOString();
+
+    await env.DB
+      .prepare(
+        'UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?'
+      )
+      .bind(now, now, user.id)
+      .run();
+
+    const session = await createUserSession(
+      env,
+      user.id
+    );
+
+    return json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        status: user.status || 'active'
+      }
+    }, 200, {
+      'Set-Cookie': session.cookie
+    });
+  } catch (error) {
+    console.error('authLogin', error);
+
+    return json({
+      ok: false,
+      error: 'Could not sign in right now.'
+    }, 500);
+  }
+}
+
+async function authLogout(request, env) {
+  try {
+    await authSchema(env);
+    const cookies = parseCookies(
+      request.headers.get('Cookie') || ''
+    );
+    const token = cookies[USER_COOKIE];
+
+    if (token) {
+      const tokenHash = await hashText(token);
+      await env.DB
+        .prepare(
+          'DELETE FROM auth_sessions WHERE token_hash = ?'
+        )
+        .bind(tokenHash)
+        .run();
+    }
+  } catch (error) {
+    console.error('authLogout', error);
+  }
+
+  return json({
+    ok: true
+  }, 200, {
+    'Set-Cookie': buildCookie(
+      USER_COOKIE,
+      '',
+      0,
+      'Lax'
+    )
+  });
+}
+
+async function authMe(request, env) {
+  try {
+    await authSchema(env);
+    const cookies = parseCookies(
+      request.headers.get('Cookie') || ''
+    );
+    const token = cookies[USER_COOKIE];
+
+    if (!token) {
+      return json({
+        ok: true,
+        authenticated: false,
+        user: null
+      });
+    }
+
+    const tokenHash = await hashText(token);
+    const now = Math.floor(Date.now() / 1000);
+    const session = await env.DB
+      .prepare(`
+        SELECT
+          s.id AS session_id,
+          u.id,
+          u.email,
+          u.name,
+          u.status
+        FROM auth_sessions s
+        JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = ?
+          AND s.expires_at > ?
+        LIMIT 1
+      `)
+      .bind(tokenHash, now)
+      .first();
+
+    if (!session || (session.status && session.status !== 'active')) {
+      return json({
+        ok: true,
+        authenticated: false,
+        user: null
+      }, 200, {
+        'Set-Cookie': buildCookie(
+          USER_COOKIE,
+          '',
+          0,
+          'Lax'
+        )
+      });
+    }
+
+    return json({
+      ok: true,
+      authenticated: true,
+      user: {
+        id: session.id,
+        email: session.email,
+        name: session.name,
+        status: session.status || 'active'
+      }
+    });
+  } catch (error) {
+    console.error('authMe', error);
+
+    return json({
+      ok: false,
+      error: 'Could not check your account.'
+    }, 500);
+  }
+}
+
+async function createUserSession(env, userId) {
+  const rawToken = toBase64Url(
+    crypto.getRandomValues(new Uint8Array(32))
+  );
+  const tokenHash = await hashText(rawToken);
+  const sessionId = crypto.randomUUID();
+  const expiresAt = Math.floor(Date.now() / 1000) +
+    USER_SESSION_SECONDS;
+  const createdAt = new Date().toISOString();
+
+  await env.DB
+    .prepare(`
+      INSERT INTO auth_sessions (
+        id,
+        user_id,
+        token_hash,
+        expires_at,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?)
+    `)
+    .bind(
+      sessionId,
+      userId,
+      tokenHash,
+      expiresAt,
+      createdAt
+    )
+    .run();
+
+  return {
+    cookie: buildCookie(
+      USER_COOKIE,
+      rawToken,
+      USER_SESSION_SECONDS,
+      'Lax'
+    )
+  };
+}
+
+async function derivePassword(password, salt) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: 120000,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    256
+  );
+
+  return toBase64Url(new Uint8Array(bits));
+}
+
+async function verifyPassword(password, saltText, expected) {
+  const salt = fromBase64Url(saltText);
+  const actual = await derivePassword(
+    password,
+    salt
+  );
+
+  return safeEqual(actual, expected);
+}
+
+function normalizeEmail(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function hashText(value) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(String(value))
+  );
+
+  return toBase64Url(new Uint8Array(digest));
 }
 
 function cleanText(value, maxLength) {
@@ -912,25 +1385,45 @@ function toBase64Url(bytes) {
     .replace(/=+$/g, '');
 }
 
+function fromBase64Url(value) {
+  const normalized = String(value)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+  const padded = normalized.padEnd(
+    Math.ceil(normalized.length / 4) * 4,
+    '='
+  );
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
 function parseCookies(header) {
   return header.split(';').reduce((cookies, part) => {
     const [key, ...rest] = part.trim().split('=');
 
     if (key) {
-      cookies[key] = decodeURIComponent(rest.join('='));
+      cookies[key] = decodeURIComponent(
+        rest.join('=')
+      );
     }
 
     return cookies;
   }, {});
 }
 
-function buildCookie(value, maxAge) {
+function buildCookie(name, value, maxAge, sameSite) {
   return [
-    `${ADMIN_COOKIE}=${encodeURIComponent(value)}`,
+    `${name}=${encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
     'Secure',
-    'SameSite=Strict',
+    `SameSite=${sameSite}`,
     `Max-Age=${maxAge}`
   ].join('; ');
 }
