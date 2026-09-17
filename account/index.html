@@ -4,24 +4,128 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f5ef">
-  <meta name="description" content="Nexauren Sound account.">
+  <meta name="description" content="Create and manage your Nexauren Sound account and digital library.">
   <title>Account — Nexauren Sound</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="announcement">YOUR LIBRARY · YOUR PRODUCTS · YOUR ACCOUNT</div>
-  <header class="site-header"><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a><button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button><nav class="nav" aria-label="Main navigation"><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a><a href="/about/">About</a><a class="nav-account" href="/account/">Account</a></nav></header>
+  <div class="announcement">YOUR ACCOUNT · YOUR LIBRARY · YOUR DOWNLOADS</div>
+
+  <header class="site-header">
+    <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
+    <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="/shop/">Shop</a>
+      <a href="/categories/">Categories</a>
+      <a href="/free/">Free Sounds</a>
+      <a href="/about/">About</a>
+      <a class="nav-account" href="/account/">Account</a>
+    </nav>
+  </header>
+
   <main class="page-shell">
-    <header class="page-header"><p class="eyebrow">ACCOUNT</p><h1>Your music library, in one place.</h1><p>Accounts and secure download history are part of the store roadmap.</p></header>
-    <div class="account-panel">
-      <div class="notice">Account sign-in is not connected yet. This page is already part of the store structure and will become your personal library once authentication is enabled.</div>
-      <a class="button button-primary" href="/shop/">Browse products</a>
-      <a class="button button-secondary" href="/free/">See free sounds</a>
+    <div id="auth-view" class="auth-layout">
+      <section class="auth-copy">
+        <p class="eyebrow">NEXAUREN ACCOUNT</p>
+        <h1>Keep every release you own in one place.</h1>
+        <p>Create a free account to manage your profile and, as purchases are connected, keep your digital products together in your library.</p>
+        <div class="auth-points">
+          <div class="auth-point"><i></i><span>One account for your Nexauren purchases.</span></div>
+          <div class="auth-point"><i></i><span>Secure login with a private session.</span></div>
+          <div class="auth-point"><i></i><span>Ready for your future download library.</span></div>
+        </div>
+      </section>
+
+      <section class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="Account access">
+          <button class="auth-tab active" type="button" data-auth-tab="login">Sign in</button>
+          <button class="auth-tab" type="button" data-auth-tab="register">Create account</button>
+        </div>
+
+        <form id="login-form" class="auth-form" novalidate>
+          <div class="auth-field">
+            <label for="login-email">Email</label>
+            <input id="login-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          </div>
+          <div class="auth-field">
+            <label for="login-password">Password</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Your password" required>
+          </div>
+          <button class="button button-primary" type="submit" id="login-button">Sign in</button>
+          <p class="form-message" id="login-message" role="alert"></p>
+        </form>
+
+        <form id="register-form" class="auth-form hidden" novalidate>
+          <div class="auth-field">
+            <label for="register-name">Name</label>
+            <input id="register-name" name="name" type="text" autocomplete="name" placeholder="Your name" minlength="2" maxlength="80" required>
+          </div>
+          <div class="auth-field">
+            <label for="register-email">Email</label>
+            <input id="register-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+          </div>
+          <div class="auth-field">
+            <label for="register-password">Password</label>
+            <input id="register-password" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" minlength="8" maxlength="128" required>
+            <span class="auth-help">Use at least 8 characters.</span>
+          </div>
+          <button class="button button-primary" type="submit" id="register-button">Create account</button>
+          <p class="form-message" id="register-message" role="alert"></p>
+        </form>
+      </section>
+    </div>
+
+    <div id="account-view" class="account-dashboard hidden" aria-live="polite">
+      <section class="account-welcome">
+        <p class="eyebrow">MY ACCOUNT</p>
+        <h1>Welcome back, <span id="account-name">creator</span>.</h1>
+        <p id="account-email"></p>
+      </section>
+
+      <div class="account-grid">
+        <section class="account-box">
+          <p class="eyebrow">YOUR LIBRARY</p>
+          <h2>Digital products</h2>
+          <p>Your purchases and downloads will appear here as checkout and delivery are connected.</p>
+          <div class="empty-library">Your library is ready for your first purchase.</div>
+          <div class="account-actions">
+            <a class="button button-primary" href="/shop/">Explore the shop</a>
+            <a class="button button-secondary" href="/free/">Free sounds</a>
+          </div>
+        </section>
+
+        <section class="account-box">
+          <p class="eyebrow">PROFILE</p>
+          <h2>Account details</h2>
+          <p id="account-status">Active account</p>
+          <div class="empty-library">Secure session active on this device.</div>
+          <div class="account-actions">
+            <button class="button button-secondary" id="logout-button" type="button">Sign out</button>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
-  <footer class="site-footer"><div class="footer-main"><div><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a><p>Original digital products for music creators.</p></div><div class="footer-columns"><div><strong>Store</strong><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a></div><div><strong>Company</strong><a href="/about/">About</a><a href="/account/">Account</a></div><div><strong>Legal</strong><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/cookies/">Cookies</a></div></div></div><div class="footer-bottom"><span>© <span id="year"></span> Nexauren Sound</span><span>Made for producers.</span></div></footer>
+
+  <footer class="site-footer">
+    <div class="footer-main">
+      <div>
+        <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
+        <p>Original digital products for music creators.</p>
+      </div>
+      <div class="footer-columns">
+        <div><strong>Store</strong><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a></div>
+        <div><strong>Support</strong><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/account/">Account</a></div>
+        <div><strong>Company</strong><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/cookies/">Cookies</a></div>
+      </div>
+    </div>
+    <div class="footer-bottom"><span>© <span id="year"></span> Nexauren Sound</span><span>Made for producers.</span></div>
+  </footer>
+
   <script src="/script.js"></script>
+  <script src="/account/script.js"></script>
 </body>
 </html>
