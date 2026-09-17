@@ -2,5 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nexauren-sound-api",
   "main": "worker.js",
-  "compatibility_date": "2026-09-17"
+  "compatibility_date": "2026-09-17",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nexauren-story_db",
+      "database_id": "aacd8b2a-7ce4-4239-a1a6-97e4ca3f1144"
+    }
+  ]
 }
