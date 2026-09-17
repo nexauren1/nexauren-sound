@@ -8,6 +8,7 @@ const productsList = document.querySelector('#products-list');
 const saveButton = document.querySelector('#save-button');
 const cancelEditButton = document.querySelector('#cancel-edit');
 const refreshButton = document.querySelector('#refresh-button');
+const seedButton = document.querySelector('#seed-button');
 const logoutButton = document.querySelector('#logout-button');
 
 const fields = {
@@ -167,6 +168,40 @@ refreshButton?.addEventListener('click', () => {
   loadProducts();
 });
 
+seedButton?.addEventListener('click', async () => {
+  const confirmed = window.confirm(
+    'Add the demo catalog to D1? This works only when the catalog is empty.'
+  );
+
+  if (!confirmed) return;
+
+  seedButton.disabled = true;
+  setMessage(formMessage, 'Creating demo catalog...');
+
+  try {
+    const data = await api('/api/admin/seed-demo', {
+      method: 'POST'
+    });
+
+    setMessage(
+      formMessage,
+      `${data.created || 0} demo products added. Replace their assets before selling.`,
+      'success'
+    );
+    await loadProducts();
+  } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      setMessage(loginMessage, 'Your admin session has expired.', 'error');
+      return;
+    }
+
+    setMessage(formMessage, error.message, 'error');
+  } finally {
+    seedButton.disabled = false;
+  }
+});
+
 cancelEditButton?.addEventListener('click', resetForm);
 
 productForm?.addEventListener('submit', async (event) => {
@@ -306,7 +341,7 @@ function renderProducts(products) {
   if (!products.length) {
     productsList.innerHTML = `
       <div class="list-state">
-        No products yet. Create the first product above.
+        No products yet. Create the first product above or use Add demo catalog.
       </div>
     `;
     return;
