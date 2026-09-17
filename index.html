@@ -68,36 +68,11 @@
         <a href="#shop" class="text-link">View all →</a>
       </div>
 
-      <div class="products">
-        <article class="product-card">
-          <div class="product-cover cover-one"><span>AFRO<br>HOUSE</span></div>
-          <div class="product-info">
-            <p class="product-type">SAMPLE PACK</p>
-            <h3>Coming Soon Vol. 01</h3>
-            <p>Drums, percussion, loops and textures for modern Afro House.</p>
-            <div class="product-bottom"><strong>$9.00</strong><button type="button">View pack</button></div>
-          </div>
-        </article>
-
-        <article class="product-card">
-          <div class="product-cover cover-two"><span>MIDI<br>ESSENTIALS</span></div>
-          <div class="product-info">
-            <p class="product-type">MIDI PACK</p>
-            <h3>Coming Soon MIDI</h3>
-            <p>Musical ideas and progressions ready to shape your next track.</p>
-            <div class="product-bottom"><strong>$7.00</strong><button type="button">View pack</button></div>
-          </div>
-        </article>
-
-        <article class="product-card">
-          <div class="product-cover cover-three"><span>DRUM<br>LAB</span></div>
-          <div class="product-info">
-            <p class="product-type">DRUM PACK</p>
-            <h3>Coming Soon Drum Lab</h3>
-            <p>Focused drum sounds designed for punch, movement and groove.</p>
-            <div class="product-bottom"><strong>$8.00</strong><button type="button">View pack</button></div>
-          </div>
-        </article>
+      <div class="products" id="products" aria-live="polite">
+        <div class="products-state" id="products-loading">
+          <span class="products-spinner" aria-hidden="true"></span>
+          <p>Loading sounds...</p>
+        </div>
       </div>
     </section>
 
