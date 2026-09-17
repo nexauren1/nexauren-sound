@@ -8,7 +8,7 @@
   <title>Nexauren Sound — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -120,8 +120,12 @@
       <section class="panel catalog-panel">
         <div class="panel-heading">
           <div><p class="eyebrow">CATALOG</p><h2>All products</h2></div>
-          <button class="button button-secondary" id="refresh-button" type="button">Refresh</button>
+          <div class="header-actions">
+            <button class="button button-secondary" id="seed-button" type="button">Add demo catalog</button>
+            <button class="button button-secondary" id="refresh-button" type="button">Refresh</button>
+          </div>
         </div>
+        <div class="list-note">Adds a starting catalog of sample packs, MIDI, presets, a project, a bundle and one free product. These are demo entries; replace the assets before selling.</div>
         <div id="products-list" class="products-list"><div class="list-state">Loading products...</div></div>
       </section>
     </section>
