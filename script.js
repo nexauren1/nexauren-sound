@@ -3,6 +3,15 @@ const nav = document.querySelector('.nav');
 const year = document.querySelector('#year');
 const productsContainer = document.querySelector('#products');
 
+const CATEGORY_LABELS = {
+  samples: 'SAMPLE PACK',
+  midi: 'MIDI PACK',
+  presets: 'PRESET PACK',
+  'project-files': 'PROJECT FILE',
+  bundles: 'BUNDLE',
+  free: 'FREE DOWNLOAD'
+};
+
 if (year) {
   year.textContent = new Date().getFullYear();
 }
@@ -33,8 +42,19 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+function slugKey(value) {
+  return String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function formatPrice(price, currency) {
-  if (Number(price) === 0) return 'Free';
+  if (Number(price) === 0) {
+    return 'Free';
+  }
 
   try {
     return new Intl.NumberFormat('en-US', {
@@ -47,16 +67,7 @@ function formatPrice(price, currency) {
 }
 
 function categoryLabel(category) {
-  const labels = {
-    samples: 'SAMPLE PACK',
-    midi: 'MIDI PACK',
-    presets: 'PRESET PACK',
-    'project-files': 'PROJECT FILE',
-    bundles: 'BUNDLE',
-    free: 'FREE DOWNLOAD'
-  };
-
-  return labels[category] || String(category || 'SOUND')
+  return CATEGORY_LABELS[category] || String(category || 'SOUND')
     .replaceAll('-', ' ')
     .toUpperCase();
 }
@@ -65,8 +76,9 @@ function coverClass(index) {
   return [
     'cover-one',
     'cover-two',
-    'cover-three'
-  ][index % 3];
+    'cover-three',
+    'cover-four'
+  ][index % 4];
 }
 
 function productCard(product, index) {
@@ -77,29 +89,30 @@ function productCard(product, index) {
     'Original sounds for your next track.'
   );
   const price = formatPrice(product.price, product.currency);
+  const genres = Array.isArray(product.genres)
+    ? product.genres.slice(0, 3)
+    : [];
+  const tags = genres.length
+    ? `<div class="product-tags">${genres.map((genre) => `<span>${escapeHtml(genre)}</span>`).join('')}</div>`
+    : '<div class="product-tags"></div>';
   const cover = product.cover_url
     ? `<img src="${escapeHtml(product.cover_url)}" alt="${title}" loading="lazy">`
     : `<span>${title}</span>`;
+  const link = `/product/?slug=${encodeURIComponent(product.slug)}`;
 
   return `
     <article class="product-card">
-      <a class="product-cover ${coverClass(index)}"
-        href="/product/?slug=${encodeURIComponent(product.slug)}"
-        aria-label="View ${title}">
+      <a class="product-cover ${coverClass(index)}" href="${link}" aria-label="View ${title}">
         ${cover}
       </a>
       <div class="product-info">
-        <p class="product-type">
-          ${escapeHtml(categoryLabel(product.category))}
-        </p>
+        <p class="product-type">${escapeHtml(categoryLabel(product.category))}</p>
         <h3>${title}</h3>
         <p>${description}</p>
+        ${tags}
         <div class="product-bottom">
           <strong>${escapeHtml(price)}</strong>
-          <a class="product-button"
-            href="/product/?slug=${encodeURIComponent(product.slug)}">
-            View product
-          </a>
+          <a class="product-button" href="${link}">View product</a>
         </div>
       </div>
     </article>
@@ -154,13 +167,15 @@ async function fetchProducts() {
 async function loadProducts() {
   if (!productsContainer) return;
 
-  showProductsState('Loading sounds...', 'loading');
+  showProductsState('Loading the collection...', 'loading');
 
   try {
     let products = await fetchProducts();
     const mode = productsContainer.dataset.productList || 'all';
     const params = new URLSearchParams(location.search);
     const category = params.get('category');
+    const genre = params.get('genre');
+    const sort = params.get('sort') || 'newest';
 
     if (mode === 'free') {
       products = products.filter((item) =>
@@ -174,19 +189,75 @@ async function loadProducts() {
       products = products.filter((item) => item.category === category);
     }
 
+    if (genre) {
+      const target = slugKey(genre);
+      products = products.filter((item) =>
+        Array.isArray(item.genres) &&
+        item.genres.some((itemGenre) => slugKey(itemGenre) === target)
+      );
+    }
+
     const search = document.querySelector('#product-search');
-    const applySearch = () => {
+    const genreFilter = document.querySelector('#genre-filter');
+    const sortSelect = document.querySelector('#sort-products');
+    const resultsCount = document.querySelector('#results-count');
+    const original = [...products];
+
+    if (genreFilter && genre) {
+      const matching = [...genreFilter.options].find(
+        (option) => slugKey(option.value) === slugKey(genre)
+      );
+      if (matching) genreFilter.value = matching.value;
+    }
+
+    if (sortSelect) {
+      sortSelect.value = sort;
+    }
+
+    const applyFilters = () => {
       const term = String(search?.value || '').trim().toLowerCase();
-      const filtered = products.filter((item) => {
-        const text = `${item.name} ${item.description || ''} ${item.category || ''}`;
-        return text.toLowerCase().includes(term);
+      const selectedGenre = genreFilter?.value || '';
+      const selectedSort = sortSelect?.value || 'newest';
+
+      let filtered = original.filter((item) => {
+        const genres = Array.isArray(item.genres) ? item.genres : [];
+        const text = [
+          item.name,
+          item.description,
+          item.short_description,
+          item.category,
+          ...genres
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        const matchesSearch = !term || text.includes(term);
+        const matchesGenre = !selectedGenre || genres.some(
+          (itemGenre) => slugKey(itemGenre) === slugKey(selectedGenre)
+        );
+
+        return matchesSearch && matchesGenre;
       });
+
+      filtered = sortProducts(filtered, selectedSort);
+
+      if (resultsCount) {
+        resultsCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'product' : 'products'}`;
+      }
 
       renderProductResults(filtered, mode);
     };
 
-    search?.addEventListener('input', applySearch);
-    renderProductResults(products, mode);
+    search?.addEventListener('input', applyFilters);
+    genreFilter?.addEventListener('change', applyFilters);
+    sortSelect?.addEventListener('change', applyFilters);
+
+    renderProductResults(
+      sortProducts(products, sort),
+      mode
+    );
+
+    if (resultsCount) {
+      resultsCount.textContent = `${products.length} ${products.length === 1 ? 'product' : 'products'}`;
+    }
   } catch (error) {
     console.error('Nexauren Sound products:', error);
     showProductsState(
@@ -196,18 +267,38 @@ async function loadProducts() {
   }
 }
 
+function sortProducts(products, sort) {
+  return [...products].sort((a, b) => {
+    if (sort === 'price-low') {
+      return Number(a.price || 0) - Number(b.price || 0);
+    }
+
+    if (sort === 'price-high') {
+      return Number(b.price || 0) - Number(a.price || 0);
+    }
+
+    if (sort === 'name') {
+      return String(a.name).localeCompare(String(b.name));
+    }
+
+    return String(b.created_at || '').localeCompare(
+      String(a.created_at || '')
+    );
+  });
+}
+
 function renderProductResults(products, mode) {
   if (!productsContainer) return;
 
-  const visible = mode === 'home' ? products.slice(0, 6) : products;
+  const visible = mode === 'home'
+    ? products.slice(0, 6)
+    : products;
 
   if (!visible.length) {
     productsContainer.innerHTML = `
       <div class="products-state">
         <p>No products match this selection yet.</p>
-        <a class="button button-secondary" href="/shop/">
-          Browse the full shop
-        </a>
+        <a class="button button-secondary" href="/shop/">Browse the full shop</a>
       </div>
     `;
     return;
@@ -257,6 +348,9 @@ async function loadProductDetail() {
     const cover = product.cover_url
       ? `<img src="${escapeHtml(product.cover_url)}" alt="${title}">`
       : `<strong>${title}</strong>`;
+    const tags = Array.isArray(product.genres)
+      ? product.genres.map((genre) => `<span>${escapeHtml(genre)}</span>`).join('')
+      : '';
 
     document.title = `${product.name} — Nexauren Sound`;
 
@@ -266,23 +360,21 @@ async function loadProductDetail() {
         <div class="detail-content">
           <p class="eyebrow">${escapeHtml(categoryLabel(product.category))}</p>
           <h1>${title}</h1>
-          <div class="detail-price">
-            ${escapeHtml(formatPrice(product.price, product.currency))}
-          </div>
+          <div class="detail-tags">${tags}</div>
+          <div class="detail-price">${escapeHtml(formatPrice(product.price, product.currency))}</div>
           <p class="detail-description">
             ${escapeHtml(product.description || product.short_description || 'Made for producers.')}
           </p>
           <div class="detail-actions">
-            <p>Digital checkout is being connected to the store.</p>
-            <a class="button button-primary" href="/shop/">
-              Continue browsing
-            </a>
+            <p>${Number(product.price) === 0 ? 'This product is free.' : 'Digital checkout is being connected to the store.'}</p>
+            <a class="button button-primary" href="/account/">Create account</a>
+            <a class="button button-secondary" href="/shop/">Continue browsing</a>
           </div>
           <div class="detail-facts">
             <div><small>Format</small><strong>${escapeHtml(categoryLabel(product.category))}</strong></div>
             <div><small>Delivery</small><strong>Digital download</strong></div>
             <div><small>Product type</small><strong>${Number(product.price) === 0 ? 'Free' : 'Paid'}</strong></div>
-            <div><small>Created for</small><strong>Music producers</strong></div>
+            <div><small>For</small><strong>Music producers</strong></div>
           </div>
         </div>
       </div>
@@ -313,6 +405,28 @@ function initFilters() {
   });
 }
 
+async function updateAccountNav() {
+  const accountLink = document.querySelector('.nav-account');
+
+  if (!accountLink) return;
+
+  try {
+    const response = await fetch('/api/auth/me', {
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+    const data = await response.json();
+
+    if (response.ok && data.authenticated) {
+      accountLink.textContent = 'My account';
+    }
+  } catch {
+    // Keep account navigation available when auth status is unavailable.
+  }
+}
+
 initFilters();
 loadProducts();
 loadProductDetail();
+updateAccountNav();
