@@ -7,6 +7,7 @@ const JSON_HEADERS = {
 
 const ADMIN_COOKIE = 'nexauren_admin';
 const ADMIN_SESSION_SECONDS = 60 * 60 * 8;
+
 const ALLOWED_CATEGORIES = new Set([
   'samples',
   'midi',
@@ -15,6 +16,7 @@ const ALLOWED_CATEGORIES = new Set([
   'bundles',
   'free'
 ]);
+
 const ALLOWED_STATUS = new Set([
   'draft',
   'published',
@@ -35,7 +37,8 @@ export default {
       return json({
         ok: true,
         service: 'nexauren-sound-api',
-        database: Boolean(env.DB)
+        database: Boolean(env.DB),
+        assets: Boolean(env.ASSETS)
       });
     }
 
@@ -51,7 +54,10 @@ export default {
       return getProducts(env);
     }
 
-    if (url.pathname.startsWith('/api/products/') && request.method === 'GET') {
+    if (
+      url.pathname.startsWith('/api/products/') &&
+      request.method === 'GET'
+    ) {
       const slug = decodeURIComponent(
         url.pathname.slice('/api/products/'.length)
       );
@@ -96,16 +102,31 @@ export default {
       return deleteProduct(env, id);
     }
 
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return json({
-      ok: false,
-      error: 'Not found'
-    }, 404);
+    return serveAsset(request, env);
   }
 };
+
+async function serveAsset(request, env) {
+  if (!env.ASSETS) {
+    return json({
+      ok: false,
+      error: 'Static assets are not configured'
+    }, 500);
+  }
+
+  const url = new URL(request.url);
+
+  if (url.pathname.startsWith('/product/')) {
+    const assetUrl = new URL(request.url);
+    assetUrl.pathname = '/product/';
+
+    return env.ASSETS.fetch(
+      new Request(assetUrl, request)
+    );
+  }
+
+  return env.ASSETS.fetch(request);
+}
 
 async function getProducts(env) {
   if (!env.DB) {
@@ -119,30 +140,34 @@ async function getProducts(env) {
     const result = await env.DB
       .prepare(`
         SELECT
-          id,
-          name,
-          slug,
-          description,
-          short_description,
-          category,
-          price,
-          currency,
-          cover_url,
-          status,
-          is_free,
-          downloads_count,
-          sales_count,
-          created_at,
-          published_at
-        FROM products
-        WHERE status = 'published'
-        ORDER BY created_at DESC
+          p.id,
+          p.name,
+          p.slug,
+          p.description,
+          p.short_description,
+          p.category,
+          p.price,
+          p.currency,
+          p.cover_url,
+          p.status,
+          p.is_free,
+          p.downloads_count,
+          p.sales_count,
+          p.created_at,
+          p.published_at,
+          GROUP_CONCAT(pt.tag, '||') AS genre_tags
+        FROM products p
+        LEFT JOIN product_tags pt
+          ON pt.product_id = p.id
+        WHERE p.status = 'published'
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
       `)
       .all();
 
     return json({
       ok: true,
-      products: result.results || []
+      products: addGenreArrays(result.results || [])
     });
   } catch (error) {
     console.error('getProducts', error);
@@ -166,24 +191,28 @@ async function getProduct(env, slug) {
     const result = await env.DB
       .prepare(`
         SELECT
-          id,
-          name,
-          slug,
-          description,
-          short_description,
-          category,
-          price,
-          currency,
-          cover_url,
-          status,
-          is_free,
-          downloads_count,
-          sales_count,
-          created_at,
-          published_at
-        FROM products
-        WHERE slug = ?
-          AND status = 'published'
+          p.id,
+          p.name,
+          p.slug,
+          p.description,
+          p.short_description,
+          p.category,
+          p.price,
+          p.currency,
+          p.cover_url,
+          p.status,
+          p.is_free,
+          p.downloads_count,
+          p.sales_count,
+          p.created_at,
+          p.published_at,
+          GROUP_CONCAT(pt.tag, '||') AS genre_tags
+        FROM products p
+        LEFT JOIN product_tags pt
+          ON pt.product_id = p.id
+        WHERE p.slug = ?
+          AND p.status = 'published'
+        GROUP BY p.id
         LIMIT 1
       `)
       .bind(slug)
@@ -198,7 +227,7 @@ async function getProduct(env, slug) {
 
     return json({
       ok: true,
-      product: result
+      product: addGenreArrays([result])[0]
     });
   } catch (error) {
     console.error('getProduct', error);
@@ -231,16 +260,22 @@ async function adminLogin(request, env) {
 
     const expiresAt = Math.floor(Date.now() / 1000) +
       ADMIN_SESSION_SECONDS;
-    const signature = await signSession(expiresAt, env.ADMIN_KEY);
+    const signature = await signSession(
+      expiresAt,
+      env.ADMIN_KEY
+    );
     const value = `${expiresAt}.${signature}`;
 
     return json({
       ok: true,
       message: 'Admin session created'
     }, 200, {
-      'Set-Cookie': buildCookie(value, ADMIN_SESSION_SECONDS)
+      'Set-Cookie': buildCookie(
+        value,
+        ADMIN_SESSION_SECONDS
+      )
     });
-  } catch (error) {
+  } catch {
     return json({
       ok: false,
       error: 'Invalid request'
@@ -285,7 +320,11 @@ async function requireAdmin(request, env) {
   const [expiresText, signature] = session.split('.');
   const expiresAt = Number(expiresText);
 
-  if (!expiresAt || !signature || expiresAt <= Math.floor(Date.now() / 1000)) {
+  if (
+    !expiresAt ||
+    !signature ||
+    expiresAt <= Math.floor(Date.now() / 1000)
+  ) {
     return {
       ok: false,
       response: json({
@@ -295,7 +334,10 @@ async function requireAdmin(request, env) {
     };
   }
 
-  const expected = await signSession(expiresAt, env.ADMIN_KEY);
+  const expected = await signSession(
+    expiresAt,
+    env.ADMIN_KEY
+  );
 
   if (!(await safeEqual(signature, expected))) {
     return {
@@ -307,9 +349,7 @@ async function requireAdmin(request, env) {
     };
   }
 
-  return {
-    ok: true
-  };
+  return { ok: true };
 }
 
 async function getAdminProducts(env) {
@@ -324,33 +364,37 @@ async function getAdminProducts(env) {
     const result = await env.DB
       .prepare(`
         SELECT
-          id,
-          name,
-          slug,
-          description,
-          short_description,
-          category,
-          price,
-          currency,
-          cover_url,
-          file_key,
-          file_name,
-          file_size,
-          status,
-          is_free,
-          downloads_count,
-          sales_count,
-          created_at,
-          updated_at,
-          published_at
-        FROM products
-        ORDER BY created_at DESC
+          p.id,
+          p.name,
+          p.slug,
+          p.description,
+          p.short_description,
+          p.category,
+          p.price,
+          p.currency,
+          p.cover_url,
+          p.file_key,
+          p.file_name,
+          p.file_size,
+          p.status,
+          p.is_free,
+          p.downloads_count,
+          p.sales_count,
+          p.created_at,
+          p.updated_at,
+          p.published_at,
+          GROUP_CONCAT(pt.tag, '||') AS genre_tags
+        FROM products p
+        LEFT JOIN product_tags pt
+          ON pt.product_id = p.id
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
       `)
       .all();
 
     return json({
       ok: true,
-      products: result.results || []
+      products: addGenreArrays(result.results || [])
     });
   } catch (error) {
     console.error('getAdminProducts', error);
@@ -437,6 +481,12 @@ async function createProduct(request, env) {
       )
       .run();
 
+    await replaceProductGenres(
+      env,
+      id,
+      product.genres
+    );
+
     return json({
       ok: true,
       product: {
@@ -475,10 +525,7 @@ async function updateProduct(request, env, id) {
   try {
     const existing = await env.DB
       .prepare(`
-        SELECT
-          id,
-          created_at,
-          published_at
+        SELECT id, created_at, published_at
         FROM products
         WHERE id = ?
         LIMIT 1
@@ -556,6 +603,12 @@ async function updateProduct(request, env, id) {
       )
       .run();
 
+    await replaceProductGenres(
+      env,
+      id,
+      product.genres
+    );
+
     return json({
       ok: true,
       product: {
@@ -577,6 +630,13 @@ async function updateProduct(request, env, id) {
 }
 
 async function deleteProduct(env, id) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'D1 database is not configured'
+    }, 500);
+  }
+
   try {
     const existing = await env.DB
       .prepare('SELECT id FROM products WHERE id = ? LIMIT 1')
@@ -589,6 +649,11 @@ async function deleteProduct(env, id) {
         error: 'Product not found'
       }, 404);
     }
+
+    await env.DB
+      .prepare('DELETE FROM product_tags WHERE product_id = ?')
+      .bind(id)
+      .run();
 
     await env.DB
       .prepare('DELETE FROM products WHERE id = ?')
@@ -629,10 +694,22 @@ async function readProductBody(request) {
     300
   );
   const category = cleanText(body?.category, 40);
-  const currency = cleanText(body?.currency || 'USD', 10).toUpperCase();
-  const coverUrl = cleanText(body?.cover_url || body?.coverUrl, 1000);
-  const fileKey = cleanText(body?.file_key || body?.fileKey, 500);
-  const fileName = cleanText(body?.file_name || body?.fileName, 255);
+  const currency = cleanText(
+    body?.currency || 'USD',
+    10
+  ).toUpperCase();
+  const coverUrl = cleanText(
+    body?.cover_url || body?.coverUrl,
+    1000
+  );
+  const fileKey = cleanText(
+    body?.file_key || body?.fileKey,
+    500
+  );
+  const fileName = cleanText(
+    body?.file_name || body?.fileName,
+    255
+  );
   const fileSize = Math.max(
     0,
     Number(body?.file_size || body?.fileSize || 0)
@@ -641,22 +718,39 @@ async function readProductBody(request) {
     ? body.status
     : 'draft';
   let price = Number(body?.price ?? 0);
-  const isFree = Boolean(body?.is_free ?? body?.isFree) || price <= 0;
+  const isFree = Boolean(
+    body?.is_free ?? body?.isFree
+  ) || price <= 0;
+  const genres = normalizeGenres(
+    body?.genres ?? body?.tags ?? body?.genre_tags
+  );
 
   if (!name) {
-    return { ok: false, error: 'Product name is required' };
+    return {
+      ok: false,
+      error: 'Product name is required'
+    };
   }
 
   if (!slug) {
-    return { ok: false, error: 'Product slug is required' };
+    return {
+      ok: false,
+      error: 'Product slug is required'
+    };
   }
 
   if (!ALLOWED_CATEGORIES.has(category)) {
-    return { ok: false, error: 'Invalid product category' };
+    return {
+      ok: false,
+      error: 'Invalid product category'
+    };
   }
 
   if (!Number.isFinite(price) || price < 0) {
-    return { ok: false, error: 'Price must be a valid positive number' };
+    return {
+      ok: false,
+      error: 'Price must be a valid positive number'
+    };
   }
 
   if (isFree) {
@@ -664,7 +758,10 @@ async function readProductBody(request) {
   }
 
   if (status === 'published' && !isFree && price <= 0) {
-    return { ok: false, error: 'Paid products need a price' };
+    return {
+      ok: false,
+      error: 'Paid products need a price'
+    };
   }
 
   return {
@@ -682,9 +779,71 @@ async function readProductBody(request) {
       fileName,
       fileSize,
       status,
-      isFree: isFree ? 1 : 0
+      isFree: isFree ? 1 : 0,
+      genres
     }
   };
+}
+
+function addGenreArrays(products) {
+  return products.map((product) => ({
+    ...product,
+    genres: normalizeGenres(product.genre_tags)
+  }));
+}
+
+function normalizeGenres(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value ?? '').split(',');
+
+  const result = [];
+  const seen = new Set();
+
+  for (const item of raw) {
+    const clean = cleanText(item, 40)
+      .replace(/\|/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const key = clean.toLowerCase();
+
+    if (!clean || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(clean);
+
+    if (result.length >= 8) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+async function replaceProductGenres(env, productId, genres) {
+  await env.DB
+    .prepare('DELETE FROM product_tags WHERE product_id = ?')
+    .bind(productId)
+    .run();
+
+  for (const genre of genres) {
+    await env.DB
+      .prepare(`
+        INSERT INTO product_tags (
+          id,
+          product_id,
+          tag
+        ) VALUES (?, ?, ?)
+      `)
+      .bind(
+        crypto.randomUUID(),
+        productId,
+        genre
+      )
+      .run();
+  }
 }
 
 function cleanText(value, maxLength) {
