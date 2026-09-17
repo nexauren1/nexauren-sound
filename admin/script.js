@@ -16,6 +16,7 @@ const fields = {
   slug: document.querySelector('#slug'),
   category: document.querySelector('#category'),
   status: document.querySelector('#status'),
+  genres: document.querySelector('#genres'),
   shortDescription: document.querySelector('#short-description'),
   description: document.querySelector('#description'),
   price: document.querySelector('#price'),
@@ -29,7 +30,6 @@ const fields = {
 
 function setMessage(element, message, type = '') {
   if (!element) return;
-
   element.textContent = message || '';
   element.className = `form-message ${type}`.trim();
 }
@@ -72,6 +72,19 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120);
+}
+
+function normalizeGenres(value) {
+  const source = Array.isArray(value)
+    ? value
+    : String(value || '').split(',');
+
+  return [...new Set(
+    source
+      .map((item) => String(item || '').trim())
+      .map((item) => item.replace(/\s+/g, ' '))
+      .filter(Boolean)
+  )].slice(0, 12);
 }
 
 fields.name?.addEventListener('input', () => {
@@ -199,6 +212,7 @@ function readForm() {
     slug: fields.slug.value.trim(),
     category: fields.category.value,
     status: fields.status.value,
+    genres: normalizeGenres(fields.genres.value),
     short_description: fields.shortDescription.value.trim(),
     description: fields.description.value.trim(),
     price: Number(fields.price.value || 0),
@@ -218,6 +232,9 @@ function fillForm(product) {
   fields.slug.dataset.edited = 'true';
   fields.category.value = product.category || 'samples';
   fields.status.value = product.status || 'draft';
+  fields.genres.value = Array.isArray(product.genres)
+    ? product.genres.join(', ')
+    : '';
   fields.shortDescription.value = product.short_description || '';
   fields.description.value = product.description || '';
   fields.price.value = Number(product.price || 0).toFixed(2);
@@ -232,10 +249,7 @@ function fillForm(product) {
   saveButton.textContent = 'Update product';
   cancelEditButton.classList.remove('hidden');
 
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth'
-  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function resetForm(clearMessage = true) {
@@ -243,6 +257,7 @@ function resetForm(clearMessage = true) {
   fields.id.value = '';
   fields.slug.value = '';
   fields.slug.dataset.edited = '';
+  fields.genres.value = '';
   fields.price.value = '0';
   fields.fileSize.value = '0';
   fields.currency.value = 'USD';
@@ -300,7 +315,7 @@ function renderProducts(products) {
   productsList.innerHTML = `
     <div class="product-row header">
       <div>Product</div>
-      <div>Category</div>
+      <div>Format / Genre</div>
       <div>Price</div>
       <div>Status</div>
       <div>Actions</div>
@@ -323,12 +338,14 @@ function productRow(product) {
   const name = escapeHtml(product.name);
   const slug = escapeHtml(product.slug);
   const category = escapeHtml(categoryLabel(product.category));
+  const genres = Array.isArray(product.genres)
+    ? product.genres.slice(0, 3).map((genre) =>
+      `<span>${escapeHtml(genre)}</span>`
+    ).join('')
+    : '';
   const price = product.is_free
     ? 'Free'
-    : new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: product.currency || 'USD'
-    }).format(Number(product.price || 0));
+    : formatPrice(product.price, product.currency);
   const status = escapeHtml(product.status || 'draft');
 
   return `
@@ -337,17 +354,29 @@ function productRow(product) {
         <strong>${name}</strong>
         <span>${slug}</span>
       </div>
-      <div class="product-meta">${category}</div>
-      <div class="product-meta">${escapeHtml(price)}</div>
-      <div>
-        <span class="status-pill status-${status}">${status}</span>
+      <div class="product-meta">
+        <strong>${category}</strong>
+        <div class="row-tags">${genres}</div>
       </div>
+      <div class="product-meta">${escapeHtml(price)}</div>
+      <div><span class="status-pill status-${status}">${status}</span></div>
       <div class="row-actions">
         <button class="small-button" type="button" data-edit="${escapeHtml(product.id)}">Edit</button>
         <button class="small-button danger" type="button" data-delete="${escapeHtml(product.id)}">Delete</button>
       </div>
     </div>
   `;
+}
+
+function formatPrice(price, currency) {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD'
+    }).format(Number(price || 0));
+  } catch {
+    return `${currency || 'USD'} ${Number(price || 0).toFixed(2)}`;
+  }
 }
 
 async function removeProduct(product) {
