@@ -96,6 +96,10 @@ export default {
       return deleteProduct(env, id);
     }
 
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request);
+    }
+
     return json({
       ok: false,
       error: 'Not found'
