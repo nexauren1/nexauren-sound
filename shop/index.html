@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f5ef">
-  <meta name="description" content="Shop Nexauren Sound sample packs, MIDI, presets, project files and bundles.">
+  <meta name="description" content="Shop Nexauren Sound sample packs, MIDI, presets, project files and bundles by genre.">
   <title>Shop — Nexauren Sound</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="announcement">NEXAUREN SOUND · ORIGINAL DIGITAL PRODUCTS</div>
+  <div class="announcement">NEXAUREN SOUND <span>•</span> BROWSE BY FORMAT, GENRE &amp; SEARCH</div>
   <header class="site-header">
     <a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a>
     <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
@@ -23,22 +23,62 @@
 
   <main class="page-shell">
     <header class="page-header">
-      <p class="eyebrow">THE STORE</p>
-      <h1>Find the sound that starts the idea.</h1>
-      <p>Browse the full Nexauren Sound collection. Filter by format or search by name, style or use.</p>
+      <p class="eyebrow">THE COLLECTION</p>
+      <h1>Find the sound that fits the track.</h1>
+      <p>Search the catalog, choose a format, then narrow it down by music style. Genres include Amapiano, R&amp;B, Pop, Afro House and more.</p>
     </header>
 
-    <div class="toolbar">
-      <div class="filter-row" aria-label="Product categories">
+    <section class="toolbar" aria-label="Product filters">
+      <div class="filter-row" aria-label="Product formats">
         <a class="filter-button" data-category="all" href="/shop/">All</a>
-        <a class="filter-button" data-category="samples" href="/shop/?category=samples">Samples</a>
+        <a class="filter-button" data-category="samples" href="/shop/?category=samples">Sample Packs</a>
         <a class="filter-button" data-category="midi" href="/shop/?category=midi">MIDI</a>
         <a class="filter-button" data-category="presets" href="/shop/?category=presets">Presets</a>
-        <a class="filter-button" data-category="project-files" href="/shop/?category=project-files">Projects</a>
+        <a class="filter-button" data-category="project-files" href="/shop/?category=project-files">Project Files</a>
         <a class="filter-button" data-category="bundles" href="/shop/?category=bundles">Bundles</a>
+        <a class="filter-button" data-category="free" href="/free/">Free</a>
       </div>
-      <input class="search-box" id="product-search" type="search" placeholder="Search products…" aria-label="Search products">
-    </div>
+
+      <input class="search-box" id="product-search" type="search" placeholder="Search by product, style or sound…" aria-label="Search products">
+
+      <div class="advanced-filters">
+        <select class="select-box" id="genre-filter" aria-label="Filter by genre">
+          <option value="">All genres</option>
+          <option value="Amapiano">Amapiano</option>
+          <option value="Afro House">Afro House</option>
+          <option value="Afropop">Afropop</option>
+          <option value="Afrobeats">Afrobeats</option>
+          <option value="R&amp;B">R&amp;B</option>
+          <option value="Pop">Pop</option>
+          <option value="Hip Hop">Hip Hop</option>
+          <option value="Trap">Trap</option>
+          <option value="Drill">Drill</option>
+          <option value="House">House</option>
+          <option value="Tech House">Tech House</option>
+          <option value="Deep House">Deep House</option>
+          <option value="Techno">Techno</option>
+          <option value="EDM">EDM</option>
+          <option value="Soul">Soul</option>
+          <option value="Neo Soul">Neo Soul</option>
+          <option value="Ambient">Ambient</option>
+          <option value="Lo-Fi">Lo-Fi</option>
+          <option value="Dancehall">Dancehall</option>
+          <option value="Reggaeton">Reggaeton</option>
+          <option value="Gospel">Gospel</option>
+          <option value="Jazz">Jazz</option>
+          <option value="Funk">Funk</option>
+          <option value="Cinematic">Cinematic</option>
+        </select>
+        <select class="select-box" id="sort-products" aria-label="Sort products">
+          <option value="newest">Newest</option>
+          <option value="name">Name A–Z</option>
+          <option value="price-low">Price: Low to high</option>
+          <option value="price-high">Price: High to low</option>
+        </select>
+      </div>
+    </section>
+
+    <div class="results-bar"><span>Catalog</span><strong id="results-count">Loading…</strong></div>
 
     <div class="products" id="products" data-product-list="shop" aria-live="polite">
       <div class="products-state"><span class="products-spinner"></span><p>Loading products...</p></div>
@@ -46,7 +86,14 @@
   </main>
 
   <footer class="site-footer">
-    <div class="footer-main"><div><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a><p>Original digital products for music creators.</p></div><div class="footer-columns"><div><strong>Store</strong><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a></div><div><strong>Company</strong><a href="/about/">About</a><a href="/account/">Account</a></div><div><strong>Legal</strong><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/cookies/">Cookies</a></div></div></div>
+    <div class="footer-main">
+      <div><a class="brand" href="/"><span class="brand-mark">N</span><span>NEXAUREN <em>SOUND</em></span></a><p>Original digital products for music creators.</p></div>
+      <div class="footer-columns">
+        <div><strong>Store</strong><a href="/shop/">Shop</a><a href="/categories/">Categories</a><a href="/free/">Free Sounds</a></div>
+        <div><strong>Support</strong><a href="/faq/">FAQ</a><a href="/contact/">Contact</a><a href="/account/">Account</a></div>
+        <div><strong>Company</strong><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/cookies/">Cookies</a></div>
+      </div>
+    </div>
     <div class="footer-bottom"><span>© <span id="year"></span> Nexauren Sound</span><span>Made for producers.</span></div>
   </footer>
   <script src="/script.js"></script>
