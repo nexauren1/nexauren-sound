@@ -5,40 +5,12 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS'
 };
 
-const demoProducts = [
-  {
-    id: 'afro-house-essentials',
-    name: 'Afro House Essentials',
-    category: 'samples',
-    price: 9.99,
-    currency: 'USD',
-    description:
-      'Drums, percussion and musical elements for Afro House production.'
-  },
-  {
-    id: 'auren-melodic-midi',
-    name: 'Auren Melodic MIDI',
-    category: 'midi',
-    price: 7.99,
-    currency: 'USD',
-    description:
-      'Melodies, chord progressions and ideas ready for your next track.'
-  },
-  {
-    id: 'nexauren-atmospheres',
-    name: 'Nexauren Atmospheres',
-    category: 'presets',
-    price: 8.99,
-    currency: 'USD',
-    description:
-      'Modern atmospheric presets designed for electronic music.'
-  }
-];
-
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: JSON_HEADERS });
+      return new Response(null, {
+        headers: JSON_HEADERS
+      });
     }
 
     const url = new URL(request.url);
@@ -46,26 +18,21 @@ export default {
     if (url.pathname === '/api/health') {
       return json({
         ok: true,
-        service: 'nexauren-sound-api'
+        service: 'nexauren-sound-api',
+        database: Boolean(env.DB)
       });
     }
 
     if (url.pathname === '/api/products') {
-      return json({
-        ok: true,
-        products: demoProducts
-      });
+      return getProducts(env);
     }
 
     if (url.pathname.startsWith('/api/products/')) {
-      const id = url.pathname.split('/').pop();
-      const product = demoProducts.find(item => item.id === id);
+      const slug = decodeURIComponent(
+        url.pathname.slice('/api/products/'.length)
+      );
 
-      if (!product) {
-        return json({ ok: false, error: 'Product not found' }, 404);
-      }
-
-      return json({ ok: true, product });
+      return getProduct(env, slug);
     }
 
     return json({
@@ -74,6 +41,105 @@ export default {
     }, 404);
   }
 };
+
+async function getProducts(env) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'D1 database is not configured'
+    }, 500);
+  }
+
+  try {
+    const result = await env.DB
+      .prepare(`
+        SELECT
+          id,
+          name,
+          slug,
+          description,
+          short_description,
+          category,
+          price,
+          currency,
+          cover_url,
+          status,
+          is_free,
+          downloads_count,
+          sales_count,
+          created_at,
+          published_at
+        FROM products
+        WHERE status = 'published'
+        ORDER BY created_at DESC
+      `)
+      .all();
+
+    return json({
+      ok: true,
+      products: result.results || []
+    });
+  } catch (error) {
+    return json({
+      ok: false,
+      error: 'Could not load products'
+    }, 500);
+  }
+}
+
+async function getProduct(env, slug) {
+  if (!env.DB) {
+    return json({
+      ok: false,
+      error: 'D1 database is not configured'
+    }, 500);
+  }
+
+  try {
+    const result = await env.DB
+      .prepare(`
+        SELECT
+          id,
+          name,
+          slug,
+          description,
+          short_description,
+          category,
+          price,
+          currency,
+          cover_url,
+          status,
+          is_free,
+          downloads_count,
+          sales_count,
+          created_at,
+          published_at
+        FROM products
+        WHERE slug = ?
+          AND status = 'published'
+        LIMIT 1
+      `)
+      .bind(slug)
+      .first();
+
+    if (!result) {
+      return json({
+        ok: false,
+        error: 'Product not found'
+      }, 404);
+    }
+
+    return json({
+      ok: true,
+      product: result
+    });
+  } catch (error) {
+    return json({
+      ok: false,
+      error: 'Could not load product'
+    }, 500);
+  }
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
